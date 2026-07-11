@@ -189,7 +189,7 @@
       btn.addEventListener("click", () => {
         $("userAddress").value = btn.getAttribute("data-use");
         toast("Address loaded");
-        readScore();
+        checkScore();
       });
     });
   }
@@ -402,29 +402,32 @@
     return s;
   }
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
-  async function readScore() {
-    const user = ($("userAddress").value || "").trim();
-    if (!ethers.isAddress(user)) {
-      toast("Enter a valid address");
-      return;
+  // ─── Actions (read-only lookup — no wallet, no transfer) ──────────────────
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** Deterministic demo score when address has no on-chain settlement yet */
+  function simulateScore(address) {
+    const h = ethers.keccak256(ethers.toUtf8Bytes(address.toLowerCase()));
+    const n = Number(BigInt(h) % 1000n);
+    let tier = 0;
+    let reasoning = "Healthy on-chain footprint with diversified activity.";
+    if (n >= 666) {
+      tier = 2;
+      reasoning = "Elevated risk signals — short tenure or anomalous flow patterns.";
+    } else if (n >= 333) {
+      tier = 1;
+      reasoning = "Mixed signals — moderate volume with uneven history density.";
     }
-    if (!isConfigured()) {
-      const hit = cfg.showcase.find((s) => s.address.toLowerCase() === user.toLowerCase());
-      if (hit) {
-        showResult(hit.score, hit.tier, hit.reasoning, "Sample", 3);
-        setPipeline("settled");
-        return;
-      }
-      toast("Contracts not configured — paste Core/Agent addresses or use a sample wallet from the board.");
-      return;
-    }
-    try {
-      await syncFromChain(user);
-    } catch (e) {
-      toast(friendlyError(e));
-      log("read error: " + (e.message || e));
-    }
+    return {
+      score: n,
+      tier,
+      reasoning,
+      status: 3,
+      lastUpdated: Date.now(),
+      source: "Simulated",
+    };
   }
 
   function showResult(score, tier, reasoning, statusLabel, status, lastUpdated) {
@@ -442,233 +445,81 @@
       <div class="result-score">${settled ? score : "—"}</div>
       <div style="margin-top:0.5rem">
         <span class="tier-pill ${tierClass(tier)}">${settled ? TIER_LABELS[tier] ?? "—" : "—"}</span>
-        <span class="muted" style="margin-left:0.5rem">Status: ${statusLabel}</span>
+        <span class="muted" style="margin-left:0.5rem">${statusLabel}</span>
       </div>
       <div class="result-meta">Updated: ${when}</div>
-      <div class="reasoning">${reasoning || (settled ? "No reasoning." : "Not settled yet — wait for the Scheduler or click Analyze Manual.")}</div>
+      <div class="reasoning">${reasoning || "No reasoning available."}</div>
     `;
   }
 
-  function linkTx(hash) {
-    const link = $("explorerLink");
-    if (!link || !hash) return;
-    link.href = `${cfg.explorerUrl}/tx/${hash}`;
-    link.style.display = "inline";
-  }
-
-  function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
-  /** Snappy pipeline animation while a single tx is in-flight */
-  async function animateFastPipeline(stopWhen) {
-    setPipeline("fetching");
-    await sleep(180);
-    if (stopWhen()) return;
-    setPipeline("analyzing");
-    await sleep(180);
-  }
-
-  async function requestScore() {
+  /**
+   * Main UX: paste address → Check Score.
+   * Never opens MetaMask, never sends a transaction.
+   */
+  async function checkScore() {
     const user = ($("userAddress").value || "").trim();
     if (!ethers.isAddress(user)) {
       toast("Enter a valid address");
       return;
     }
-    if (!signer) {
-      await connectWallet();
-      if (!signer) return;
-    }
-    if (!isConfigured()) {
-      toast("Set contract addresses first (config.js / localStorage)");
-      return;
-    }
+
+    const btn = $("btnCheck");
+    if (btn) btn.disabled = true;
+
     try {
-      await ensureRitualChain();
-      const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
-      const fee = {
-        maxPriorityFeePerGas: ethers.parseUnits("1.5", "gwei"),
-        maxFeePerGas: ethers.parseUnits("40", "gwei"),
-        gasLimit: 2_000_000n, // scoreNow does fetch+mint+reward in one tx
-      };
-
-      let isMock = true;
-      try {
-        isMock = await agent.mockMode();
-      } catch (_) {}
-
+      // Visual pipeline only (no chain writes)
       setPipeline("fetching");
-      toast(isMock ? "Scoring (fast mock)…" : "Submitting fetch…");
-
-      // Fast path: one tx does fetch+analyze+settle when mockMode is on
-      let tx;
-      let settledInOneTx = false;
-      if (isMock) {
-        try {
-          tx = await agent.scoreNow(user, fee);
-          settledInOneTx = true;
-        } catch (_) {
-          // Fallback for older agents without scoreNow
-          tx = await agent["fetchData(address)"](user, fee);
-          settledInOneTx = true; // new fetchData also settles inline in mock mode
-        }
-      } else {
-        try {
-          tx = await agent["fetchData(address)"](user, fee);
-        } catch (e1) {
-          try {
-            tx = await agent.requestAndFetch(user, fee);
-          } catch (e2) {
-            setPipeline("fetch_error");
-            toast(friendlyError(e2));
-            log("request error: " + (e2.message || e2));
-            return;
-          }
-        }
-      }
-
-      log("tx submitted " + tx.hash);
-      linkTx(tx.hash);
-
-      // Animate 1→2 while waiting for receipt (feels faster)
-      let done = false;
-      const anim = animateFastPipeline(() => done);
-      const rc = await tx.wait();
-      done = true;
-      await anim;
-
-      if (!txOk(rc)) {
-        setPipeline("fetch_error");
-        toast("Transaction reverted on-chain.");
-        log("tx reverted " + tx.hash);
-        return;
-      }
-      log("confirmed block " + (rc?.blockNumber ?? "?"));
-
-      if (settledInOneTx || isMock) {
-        // Brief beat on step 3, then show score + reasoning immediately
-        setPipeline("settled");
-        await sleep(120);
-        const s = await syncFromChain(user, { toastSettled: true });
-        if (s && s.status === 3) {
-          await loadOnChainStats();
-          return;
-        }
-        // rare race: wait a tick and re-read
-        await sleep(350);
-        await syncFromChain(user, { toastSettled: true });
-        await loadOnChainStats();
-        return;
-      }
-
-      // Live precompile path: poll scheduler quickly
+      await sleep(220);
       setPipeline("analyzing");
-      toast("Data fetched — waiting for Scheduler…");
-      startPolling(user);
-    } catch (e) {
-      if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
-        setPipeline("idle");
-        toast(friendlyError(e));
-      } else {
-        setPipeline("fetch_error");
-        toast(friendlyError(e));
-      }
-      log("request error: " + (e.message || e));
-    }
-  }
+      await sleep(280);
 
-  async function analyzeManual() {
-    const user = ($("userAddress").value || "").trim();
-    if (!ethers.isAddress(user)) {
-      toast("Enter a valid address");
-      return;
-    }
-    if (!signer) {
-      await connectWallet();
-      if (!signer) return;
-    }
-    if (!isConfigured()) {
-      toast("Connect wallet and ensure contracts configured");
-      return;
-    }
-    try {
-      await ensureRitualChain();
-      // Already settled?
-      const existing = await syncFromChain(user).catch(() => null);
-      if (existing && existing.status === 3) {
-        toast("This address is already settled.");
-        return;
-      }
+      // 1) Showcase sample (instant)
+      const sample = (cfg.showcase || []).find(
+        (s) => s.address.toLowerCase() === user.toLowerCase()
+      );
 
-      setPipeline("analyzing");
-      const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
-      const fee = {
-        maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
-        maxFeePerGas: ethers.parseUnits("30", "gwei"),
-      };
-      const tx = await agent.analyzeScoreManual(user, {
-        ...fee,
-        gasLimit: fee.gasLimit ?? 2_000_000n,
-      });
-      log("analyze tx " + tx.hash);
-      linkTx(tx.hash);
-      const rc = await tx.wait();
-      if (!txOk(rc)) {
-        // Maybe scheduler settled concurrently
-        const s = await syncFromChain(user).catch(() => null);
-        if (s && s.status === 3) {
-          toast("Score settled on-chain");
-          return;
+      // 2) On-chain read via public RPC (no wallet)
+      let onchain = null;
+      if (isConfigured()) {
+        try {
+          const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
+          onchain = parseScores(await core.scores(user));
+        } catch (e) {
+          log("rpc read: " + (e.message || e));
         }
-        setPipeline("analyze_error");
-        toast("Analyze transaction reverted.");
-        return;
       }
-      await syncFromChain(user, { toastSettled: true });
-      await loadOnChainStats();
-    } catch (e) {
-      // NoPendingData often means Scheduler already settled
-      const s = await syncFromChain(user).catch(() => null);
-      if (s && s.status === 3) {
-        toast("Score settled on-chain (Scheduler)");
-        return;
-      }
-      if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
-        setPipeline("analyzing");
-        toast(friendlyError(e));
-      } else {
-        setPipeline("analyze_error");
-        toast(friendlyError(e));
-      }
-      log("analyze error: " + (e.message || e));
-    }
-  }
 
-  function startPolling(user) {
-    if (pollTimer) clearInterval(pollTimer);
-    let ticks = 0;
-    pollTimer = setInterval(async () => {
-      ticks++;
-      try {
-        const s = await syncFromChain(user);
-        if (!s) return;
-        if (s.status === 3) {
-          toast("Score settled on-chain");
-          clearInterval(pollTimer);
-          loadOnChainStats();
-        } else if (s.status === 4) {
-          setPipeline("analyze_error");
-          toast("On-chain analyze failed — try Request Update again.");
-          clearInterval(pollTimer);
-        }
-      } catch (_) {}
-      if (ticks > 40) {
-        clearInterval(pollTimer);
-        setPipeline("analyzing");
-        toast("Scheduler is slow — click Analyze Manual to settle.");
-        log("poll timeout — use Analyze Manual");
+      setPipeline("settled");
+
+      if (onchain && onchain.status === 3) {
+        showResult(
+          onchain.score,
+          onchain.tier,
+          onchain.reasoning,
+          "On-chain · Settled",
+          3,
+          onchain.lastUpdated
+        );
+        toast("Score loaded from chain");
+        log(`Lookup ${shortAddr(user)} on-chain score=${onchain.score}`);
+      } else if (sample) {
+        showResult(sample.score, sample.tier, sample.reasoning, "Sample board", 3, Date.now());
+        toast("Score loaded from sample board");
+        log(`Lookup ${shortAddr(user)} sample score=${sample.score}`);
+      } else {
+        // Any address still gets a deterministic simulated result (no tx)
+        const sim = simulateScore(user);
+        showResult(sim.score, sim.tier, sim.reasoning, "Simulated (read-only)", 3, sim.lastUpdated);
+        toast("Simulated score (not written on-chain)");
+        log(`Lookup ${shortAddr(user)} simulated score=${sim.score}`);
       }
-    }, 500); // snappy poll (~0.5s)
+    } catch (e) {
+      setPipeline("fetch_error");
+      toast(friendlyError(e));
+      log("check error: " + (e.message || e));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   function saveAddresses() {
@@ -699,9 +550,10 @@
     updateAccountStatus(false);
 
     $("walletBtn")?.addEventListener("click", connectWallet);
-    $("btnRead")?.addEventListener("click", readScore);
-    $("btnRequest")?.addEventListener("click", requestScore);
-    $("btnAnalyze")?.addEventListener("click", analyzeManual);
+    $("btnCheck")?.addEventListener("click", checkScore);
+    $("userAddress")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") checkScore();
+    });
     $("btnSaveCfg")?.addEventListener("click", saveAddresses);
 
     if ($("cfgCore")) $("cfgCore").value = cfg.contracts.core;

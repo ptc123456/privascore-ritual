@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PrivaScore App · Ritual</title>
-    <link rel="stylesheet" href="css/style.css?v=7" />
+    <link rel="stylesheet" href="css/style.css?v=8" />
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js" defer></script>
-    <script src="js/config.js?v=7" defer></script>
-    <script src="js/app.js?v=7" defer></script>
+    <script src="js/config.js?v=8" defer></script>
+    <script src="js/app.js?v=8" defer></script>
   </head>
   <body>
     <div class="container app-shell">
@@ -29,8 +29,8 @@
         <div>
           <h1 style="font-size: 1.6rem; letter-spacing: -0.03em">Scoring dashboard</h1>
           <p class="muted" style="max-width: 36rem">
-            Read-only data loads from Ritual public RPC without a wallet. Connect MetaMask
-            (chain 1979) to request autonomous score updates.
+            Enter any wallet address to look up a PrivaScore. Everything runs read-only on
+            Ritual public RPC — no MetaMask, no gas, no transfer.
           </p>
         </div>
         <div class="glass panel" id="onchainStats" style="min-width: min(280px, 100%)">
@@ -40,26 +40,24 @@
 
       <div class="panel-grid">
         <section class="glass panel">
-          <h2>Request score</h2>
+          <h2>Lookup score</h2>
           <div class="field">
-            <label for="userAddress">Wallet address to score</label>
+            <label for="userAddress">Wallet address</label>
             <input id="userAddress" type="text" spellcheck="false" autocomplete="off" placeholder="0x…" />
           </div>
           <div class="row-actions">
-            <button type="button" class="btn" id="btnRead">Read Score</button>
-            <button type="button" class="btn btn-primary" id="btnRequest">Request Update</button>
-            <button type="button" class="btn btn-ghost" id="btnAnalyze">Analyze Manual</button>
+            <button type="button" class="btn btn-primary" id="btnCheck">Check Score</button>
           </div>
           <p class="muted" style="font-size:0.82rem;margin:0.35rem 0 0.75rem">
-            Paste an address (or click <strong>Use</strong> on the board) → connect MetaMask on Ritual
-            <strong>1979</strong> → <strong>Request Update</strong>. Mock mode settles score + reasoning
-            in a single fast transaction. <strong>Read Score</strong> is read-only (no transaction).
+            Paste any address (or click <strong>Use</strong> on the board), then
+            <strong>Check Score</strong>. No wallet connect and no transaction required —
+            lookup uses the public Ritual RPC only.
           </p>
 
-          <div class="pipeline" id="pipeline" aria-label="Multi-block pipeline" data-mode="idle">
+          <div class="pipeline" id="pipeline" aria-label="Lookup pipeline" data-mode="idle">
             <div class="pipe-step" id="pipe0" data-step="0">
               <span class="idx">0</span>
-              <span class="pipe-label">Idle / ready</span>
+              <span class="pipe-label">Ready</span>
               <span class="state" id="st0">Ready</span>
             </div>
             <div class="pipe-step" id="pipe1" data-step="1">
@@ -69,23 +67,19 @@
             </div>
             <div class="pipe-step" id="pipe2" data-step="2">
               <span class="idx">2</span>
-              <span class="pipe-label">Analyzing (Scheduler / LLM)</span>
+              <span class="pipe-label">Analyzing</span>
               <span class="state" id="st2">Waiting</span>
             </div>
             <div class="pipe-step" id="pipe3" data-step="3">
               <span class="idx">3</span>
-              <span class="pipe-label">Settled · SBT credential</span>
+              <span class="pipe-label">Result</span>
               <span class="state" id="st3">Waiting</span>
             </div>
           </div>
 
           <div class="result-box" id="resultBox">
-            <p class="muted">Score result appears here after read or settlement.</p>
+            <p class="muted">Score and reasoning appear here after lookup.</p>
           </div>
-
-          <p style="margin-top: 0.75rem">
-            <a id="explorerLink" href="#" target="_blank" rel="noopener" style="display: none">View tx on explorer ↗</a>
-          </p>
           <div class="log" id="txLog" aria-live="polite"></div>
         </section>
 
