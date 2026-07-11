@@ -18,7 +18,7 @@
           PrivaScore
         </div>
         <div class="nav-actions">
-          <a class="btn btn-ghost btn-sm" href="https://docs.ritualfoundation.org" target="_blank" rel="noopener">Docs</a>
+          <a class="btn btn-ghost btn-sm" href="#docs">Docs</a>
           <a class="btn btn-primary" href="app.html">Launch App</a>
         </div>
       </nav>
@@ -115,10 +115,169 @@
           <article class="glass step-card">
             <h3>Read without wallet</h3>
             <p>
-              Dashboard hits public RPC immediately for stats and leaderboard. Connect MetaMask
-              only when you want to request a new score.
+              Dashboard and score lookup use Ritual public RPC only. No MetaMask, no gas, and no
+              transfer required to check an address.
             </p>
           </article>
+        </div>
+      </section>
+
+      <section class="section docs-section" id="docs">
+        <h2>Project docs</h2>
+        <p class="sub">Click a question to expand the answer.</p>
+
+        <div class="faq-list" role="list">
+          <details class="faq-item glass" role="listitem">
+            <summary>What is PrivaScore?</summary>
+            <div class="faq-body">
+              <p>
+                PrivaScore is an on-chain risk &amp; trust scoring system built for
+                <strong>Ritual Testnet</strong> (chain ID <strong>1979</strong>). It turns wallet
+                activity signals into a score from <strong>0–999</strong>, a risk tier
+                (Low / Medium / High), and a short reasoning string that anyone can verify.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>How does the agent pipeline work?</summary>
+            <div class="faq-body">
+              <p>The smart-contract agent is designed as a multi-step Ritual flow:</p>
+              <ol>
+                <li><strong>Fetch</strong> — HTTP precompile <code>0x0801</code> pulls external data in a TEE.</li>
+                <li><strong>Schedule</strong> — Scheduler system contract queues the next step (no keeper bots).</li>
+                <li><strong>Analyze</strong> — LLM precompile <code>0x0802</code> (model <code>zai-org/GLM-4.7-FP8</code>) returns score + tier + reasoning.</li>
+                <li><strong>Settle</strong> — <code>PrivaScoreCore</code> records the result and mints/updates a soulbound SBT.</li>
+              </ol>
+              <p>
+                Ritual allows only <strong>one short-running async precompile per transaction</strong>,
+                so HTTP and LLM are never called in the same tx.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>Do I need MetaMask or a transfer to check a score?</summary>
+            <div class="faq-body">
+              <p>
+                <strong>No.</strong> On the dashboard, paste any wallet address and click
+                <strong>Check Score</strong>. Lookup is fully <strong>read-only</strong> over
+                <code>https://rpc.ritualfoundation.org</code>. If you never connect a wallet, the app
+                never sends a transaction and never spends gas.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>What is Mock Mode?</summary>
+            <div class="faq-body">
+              <p>
+                Mock Mode is an owner-toggle on the agent contract. When enabled, HTTP/LLM precompiles
+                are simulated on-chain with deterministic data so demos stay stable if TEE executors
+                are flaky. Production demos can keep Mock Mode on as a safety net while still using
+                real contracts, events, and SBT minting.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>What is the soulbound credential (SBT)?</summary>
+            <div class="faq-body">
+              <p>
+                Each settled address can receive a non-transferable ERC-721 credential from
+                <code>PrivaScoreCore</code>. Transfers, approvals, and sales are blocked. Metadata is
+                returned via on-chain <code>tokenURI</code> (base64 JSON) so explorers can show score
+                and tier without an off-chain metadata server.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>Which network and contracts are used?</summary>
+            <div class="faq-body">
+              <ul>
+                <li><strong>Network:</strong> Ritual Testnet · Chain ID <code>1979</code></li>
+                <li><strong>RPC:</strong> <code>https://rpc.ritualfoundation.org</code></li>
+                <li><strong>Explorer:</strong> <a href="https://explorer.ritualfoundation.org" target="_blank" rel="noopener">explorer.ritualfoundation.org</a></li>
+                <li><strong>Faucet:</strong> <a href="https://faucet.ritualfoundation.org" target="_blank" rel="noopener">faucet.ritualfoundation.org</a></li>
+                <li><strong>PrivaScoreCore:</strong> <code class="mono break">0xcD3bDa961f452D35420042f5c05685Cad9DfDa33</code></li>
+                <li><strong>PrivaScoreAgent:</strong> <code class="mono break">0x9f8A3Fd04bC40a593936B4dfD8798B89Ae1487c5</code></li>
+                <li><strong>PrivaToken:</strong> <code class="mono break">0xd66a39bC33354EC20fC03673D3835eC5C50aE42d</code></li>
+              </ul>
+              <p>
+                System contracts (pre-deployed on Ritual): Scheduler
+                <code class="mono">0x56e776…D58B</code>, RitualWallet
+                <code class="mono">0x532F0d…3948</code>, AsyncDelivery
+                <code class="mono">0x5A1621…39F6</code>.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>What do the score and risk tiers mean?</summary>
+            <div class="faq-body">
+              <ul>
+                <li><strong>Score:</strong> integer <code>0–999</code> (higher = stronger trust signals in the demo model).</li>
+                <li><strong>Tier 0 · Low:</strong> typically score &lt; 333 — healthier activity profile.</li>
+                <li><strong>Tier 1 · Medium:</strong> 333–665 — mixed behavioral signals.</li>
+                <li><strong>Tier 2 · High:</strong> ≥ 666 — elevated anomaly / short-tenure risk.</li>
+              </ul>
+              <p>
+                Tier thresholds are applied on-chain when parsing LLM or mock output. Reasoning is a
+                short human-readable summary stored with the score record.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>How do I use the dashboard?</summary>
+            <div class="faq-body">
+              <ol>
+                <li>Open the <a href="app.html">app dashboard</a>.</li>
+                <li>Paste a wallet address, or click <strong>Use</strong> on the leaderboard.</li>
+                <li>Click <strong>Check Score</strong> (or press Enter).</li>
+                <li>Watch the 1 → 2 → 3 pipeline animation, then read the score, tier, and reasoning.</li>
+              </ol>
+              <p>
+                Leaderboard mixes live on-chain settlements with sample rows for a fuller demo board.
+                No wallet connection is required for lookup.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>Where is the source code?</summary>
+            <div class="faq-body">
+              <p>
+                The full stack (Foundry contracts, tests, deploy scripts, and static frontend) lives on
+                GitHub:
+                <a href="https://github.com/ptc123456/privascore-ritual" target="_blank" rel="noopener">
+                  github.com/ptc123456/privascore-ritual
+                </a>.
+              </p>
+              <p>
+                For Ritual developer references see
+                <a href="https://docs.ritualfoundation.org" target="_blank" rel="noopener">docs.ritualfoundation.org</a>
+                and the
+                <a href="https://github.com/ritual-foundation/ritual-dapp-skills" target="_blank" rel="noopener">ritual-dapp-skills</a>
+                repository.
+              </p>
+            </div>
+          </details>
+
+          <details class="faq-item glass" role="listitem">
+            <summary>Any Ritual-specific gotchas we handled?</summary>
+            <div class="faq-body">
+              <ul>
+                <li>Priority fee must be ≥ <strong>1 gwei</strong> or txs can vanish silently.</li>
+                <li>Do not use <code>--legacy</code> transactions on Ritual.</li>
+                <li><code>block.timestamp</code> is in <strong>milliseconds</strong> on Ritual.</li>
+                <li>Precompile mocks must use <code>fallback</code> (avoid double ABI-encoding).</li>
+                <li>LLM requests must include <code>convoHistory</code> (empty tuple is valid).</li>
+                <li>AsyncDelivery callbacks must verify <code>msg.sender == AsyncDelivery</code>.</li>
+              </ul>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -128,8 +287,23 @@
           <a href="https://rpc.ritualfoundation.org">rpc.ritualfoundation.org</a>
           ·
           <a href="app.html">Launch app</a>
+          ·
+          <a href="#docs">Docs</a>
+          ·
+          <a href="https://github.com/ptc123456/privascore-ritual" target="_blank" rel="noopener">GitHub</a>
         </p>
       </footer>
     </div>
+    <script>
+      // Accordion: only one open FAQ at a time (optional UX polish)
+      document.querySelectorAll(".faq-item").forEach((item) => {
+        item.addEventListener("toggle", () => {
+          if (!item.open) return;
+          document.querySelectorAll(".faq-item").forEach((other) => {
+            if (other !== item) other.open = false;
+          });
+        });
+      });
+    </script>
   </body>
 </html>
