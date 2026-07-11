@@ -86,46 +86,87 @@
 
   async function loadLiveLeaderboard(core, count) {
     const tbody = $("leaderboardBody");
-    if (!tbody || count === 0) return;
-    const n = Math.min(count, 8);
-    const rows = [];
-    for (let i = count - 1; i >= Math.max(0, count - n); i--) {
-      try {
-        const user = await core.scoredUsers(i);
-        const s = await core.scores(user);
-        rows.push({
-          address: user,
-          score: Number(s.score ?? s[0]),
-          tier: Number(s.riskTier ?? s[1]),
-          reasoning: s.reasoning ?? s[5] ?? "",
-          live: true,
-        });
-      } catch (_) {}
+    if (!tbody) return;
+
+    const limit = cfg.leaderboardLimit || 40;
+    const liveRows = [];
+    if (count > 0) {
+      // Newest first, up to limit
+      for (let i = count - 1; i >= Math.max(0, count - limit); i--) {
+        try {
+          const user = await core.scoredUsers(i);
+          const s = await core.scores(user);
+          const status = Number(s.status ?? s[4]);
+          if (status !== 3) continue; // only Settled
+          liveRows.push({
+            address: user,
+            score: Number(s.score ?? s[0]),
+            tier: Number(s.riskTier ?? s[1]),
+            reasoning: s.reasoning ?? s[5] ?? "",
+            live: true,
+          });
+        } catch (_) {}
+      }
     }
-    if (rows.length) renderLeaderboard(rows, true);
+
+    // Merge showcase wallets not already on-chain so the board always feels full
+    const seen = new Set(liveRows.map((r) => r.address.toLowerCase()));
+    const fillers = (cfg.showcase || []).filter((r) => !seen.has(r.address.toLowerCase()));
+    const merged = liveRows.concat(fillers.map((r) => ({ ...r, live: false })));
+
+    // Sort by score desc for a proper leaderboard feel
+    merged.sort((a, b) => Number(b.score) - Number(a.score));
+
+    if (merged.length) {
+      const label =
+        liveRows.length > 0
+          ? `Live on-chain (${liveRows.length})` + (fillers.length ? ` + demo` : "")
+          : "Showcase (demo)";
+      renderLeaderboard(merged, liveRows.length > 0, label, liveRows.length);
+    }
   }
 
   function loadShowcase() {
-    renderLeaderboard(cfg.showcase, false);
+    const rows = [...(cfg.showcase || [])].sort((a, b) => Number(b.score) - Number(a.score));
+    renderLeaderboard(rows, false, "Showcase (demo)", 0);
   }
 
-  function renderLeaderboard(rows, live) {
+  function renderLeaderboard(rows, live, label, liveCount) {
     const tbody = $("leaderboardBody");
     const tag = $("lbTag");
     if (!tbody) return;
-    if (tag) tag.textContent = live ? "Live on-chain" : "Showcase (demo)";
-    tbody.innerHTML = rows
-      .map(
-        (r) => `
-      <tr>
-        <td class="addr">${shortAddr(r.address)}</td>
+    if (tag) tag.textContent = label || (live ? "Live on-chain" : "Showcase (demo)");
+
+    const visible = rows.slice(0, cfg.leaderboardLimit || 40);
+    const hasMore = rows.length > visible.length;
+
+    tbody.innerHTML =
+      visible
+        .map((r, idx) => {
+          const rank = idx + 1;
+          const badge = r.live
+            ? `<span class="lb-badge live" title="Settled on Ritual">LIVE</span>`
+            : `<span class="lb-badge demo" title="Demo showcase row">DEMO</span>`;
+          const note = (r.reasoning || "").length > 72
+            ? (r.reasoning || "").slice(0, 72) + "…"
+            : (r.reasoning || "");
+          return `
+      <tr class="${r.live ? "row-live" : "row-demo"}">
+        <td class="rank muted">#${rank}</td>
+        <td class="addr" title="${r.address}">${shortAddr(r.address)} ${badge}</td>
         <td><strong>${r.score}</strong></td>
         <td><span class="tier-pill ${tierClass(r.tier)}">${TIER_LABELS[r.tier] || r.tier}</span></td>
-        <td class="muted">${(r.reasoning || "").slice(0, 64)}</td>
+        <td class="muted note-cell">${note}</td>
         <td><button class="btn btn-sm" data-use="${r.address}">Use</button></td>
-      </tr>`
-      )
-      .join("");
+      </tr>`;
+        })
+        .join("") +
+      (hasMore
+        ? `<tr class="row-more"><td colspan="6" class="muted" style="text-align:center;padding:0.85rem">… and ${rows.length - visible.length} more wallets on the board</td></tr>`
+        : visible.length >= 8
+          ? `<tr class="row-more"><td colspan="6" class="muted" style="text-align:center;padding:0.85rem">… end of leaderboard · ${visible.length} wallets shown${liveCount ? ` · ${liveCount} live` : ""}</td></tr>`
+          : "");
+
     tbody.querySelectorAll("[data-use]").forEach((btn) => {
       btn.addEventListener("click", () => {
         $("userAddress").value = btn.getAttribute("data-use");

@@ -49,39 +49,32 @@ window.PRIVASCORE_CONFIG = {
       "event ScoreAnalyzed(address indexed user, uint256 score, uint8 tier, bool mocked)",
     ],
   },
-  // Showcase leaderboard (read-only UX, no wallet required)
+  // Showcase / fallback leaderboard (read-only UX, no wallet required)
+  // Prefer live on-chain rows when available; these fill the board for demo.
   showcase: [
-    {
-      address: "0x1111111111111111111111111111111111111111",
-      score: 912,
-      tier: 0,
-      reasoning: "Long-lived wallet, diversified DeFi footprint.",
-    },
-    {
-      address: "0x2222222222222222222222222222222222222222",
-      score: 744,
-      tier: 0,
-      reasoning: "Healthy activity density, low anomaly rate.",
-    },
-    {
-      address: "0x3333333333333333333333333333333333333333",
-      score: 518,
-      tier: 1,
-      reasoning: "Mixed signals: high volume with sparse history.",
-    },
-    {
-      address: "0x4444444444444444444444444444444444444444",
-      score: 291,
-      tier: 2,
-      reasoning: "Elevated risk: sudden inflows and short tenure.",
-    },
-    {
-      address: "0x5555555555555555555555555555555555555555",
-      score: 680,
-      tier: 1,
-      reasoning: "Medium trust — solid NFTs, moderate leverage.",
-    },
+    { address: "0x1111111111111111111111111111111111111111", score: 912, tier: 0, reasoning: "Long-lived wallet, diversified DeFi footprint." },
+    { address: "0x2222222222222222222222222222222222222222", score: 874, tier: 0, reasoning: "Healthy activity density, low anomaly rate." },
+    { address: "0x3333333333333333333333333333333333333333", score: 801, tier: 0, reasoning: "Steady yield farming, clean funding sources." },
+    { address: "0x4444444444444444444444444444444444444444", score: 756, tier: 0, reasoning: "Blue-chip NFT holder with multi-year tenure." },
+    { address: "0x5555555555555555555555555555555555555555", score: 702, tier: 0, reasoning: "Solid bridges, consistent on-chain cadence." },
+    { address: "0x6666666666666666666666666666666666666666", score: 661, tier: 1, reasoning: "Medium trust - solid NFTs, moderate leverage." },
+    { address: "0x7777777777777777777777777777777777777777", score: 618, tier: 1, reasoning: "Active trader; some concentration risk." },
+    { address: "0x8888888888888888888888888888888888888888", score: 574, tier: 1, reasoning: "Mixed signals: high volume, sparse early history." },
+    { address: "0x9999999999999999999999999999999999999999", score: 531, tier: 1, reasoning: "New protocol explorer; limited reputation graph." },
+    { address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", score: 488, tier: 1, reasoning: "Cross-chain hop pattern needs more seasoning." },
+    { address: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", score: 442, tier: 1, reasoning: "Elevated contract interaction entropy." },
+    { address: "0xcccccccccccccccccccccccccccccccccccccccc", score: 389, tier: 2, reasoning: "Short tenure with rapid capital rotation." },
+    { address: "0xdddddddddddddddddddddddddddddddddddddddd", score: 327, tier: 2, reasoning: "Elevated risk: sudden inflows and short tenure." },
+    { address: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", score: 261, tier: 2, reasoning: "Anomaly cluster near known mixer corridors." },
+    { address: "0xffffffffffffffffffffffffffffffffffffffff", score: 198, tier: 2, reasoning: "Thin history, high failure rate on approvals." },
+    { address: "0x1010101010101010101010101010101010101010", score: 845, tier: 0, reasoning: "Institutional-style custody footprint." },
+    { address: "0x2020202020202020202020202020202020202020", score: 793, tier: 0, reasoning: "Stablecoin-heavy, low leverage profile." },
+    { address: "0x3030303030303030303030303030303030303030", score: 647, tier: 1, reasoning: "DAO voter with moderate treasury exposure." },
+    { address: "0x4040404040404040404040404040404040404040", score: 512, tier: 1, reasoning: "Builder wallet; uneven activity bursts." },
+    { address: "0x5050505050505050505050505050505050505050", score: 356, tier: 2, reasoning: "Fresh wallet after large inbound transfer." },
   ],
+  /** Max live on-chain rows to fetch from Core.scoredUsers */
+  leaderboardLimit: 40,
 };
 
 window.STATUS_LABELS = ["None", "DataFetched", "Analyzing", "Settled", "Failed"];
