@@ -137,3 +137,9 @@ cd frontend && npx --yes serve .
 ## License
 
 MIT
+
+## Live links
+
+- GitHub: https://github.com/ptc123456/privascore-ritual
+- Frontend (Vercel): https://privascore-rose.vercel.app
+- App dashboard: https://privascore-rose.vercel.app/app.html
