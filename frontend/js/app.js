@@ -287,71 +287,95 @@
     t.textContent = ok ? shortAddr(account) : "Not connected";
   }
 
-  // ─── Pipeline UI ──────────────────────────────────────────────────────────
-  /**
-   * stage: 0 idle | 1 fetching | 2 analyzing | 3 settled (success)
-   * failedAt: optional 1|2|3 — marks which step failed (never paint "Settled" as Failed on success path)
-   */
-  function setPipeline(stage, failedAt) {
-    const steps = ["pipe0", "pipe1", "pipe2", "pipe3"];
-    // success-path status labels per stage
-    const successTexts = {
-      0: ["Ready", "Waiting", "Waiting", "Waiting"],
-      1: ["Done", "In progress…", "Waiting", "Waiting"],
-      2: ["Done", "Done", "In progress…", "Waiting"],
-      3: ["Done", "Done", "Done", "Settled"],
-    };
+  // ─── Pipeline UI (step 3 NEVER shows the word "Failed") ───────────────────
+  // modes: idle | fetching | analyzing | settled | fetch_error | analyze_error
+  const PIPE_MODES = {
+    idle: {
+      texts: ["Ready", "Waiting", "Waiting", "Waiting"],
+      cls: ["active", "", "", ""],
+    },
+    fetching: {
+      texts: ["Done", "In progress…", "Waiting", "Waiting"],
+      cls: ["done", "active", "", ""],
+    },
+    analyzing: {
+      texts: ["Done", "Done", "In progress…", "Waiting"],
+      cls: ["done", "done", "active", ""],
+    },
+    settled: {
+      texts: ["Done", "Done", "Done", "Settled ✓"],
+      cls: ["done", "done", "done", "done"],
+    },
+    fetch_error: {
+      texts: ["Done", "Error", "—", "—"],
+      cls: ["done", "failed", "", ""],
+    },
+    analyze_error: {
+      texts: ["Done", "Done", "Error", "—"],
+      cls: ["done", "done", "failed", ""],
+    },
+  };
 
-    let texts;
-    let activeIdx;
-    if (failedAt != null) {
-      // Build: steps before fail = Done, fail step = Failed, rest = Not reached
-      texts = ["Waiting", "Waiting", "Waiting", "Waiting"];
-      for (let i = 0; i < failedAt; i++) texts[i] = "Done";
-      texts[failedAt] = "Failed";
-      for (let i = failedAt + 1; i < 4; i++) texts[i] = "Not reached";
-      // Fetch fail → failedAt 1; analyze/tx fail → 2; on-chain Failed status → 2 (not step 3)
-      if (failedAt >= 3) {
-        texts = ["Done", "Done", "Done", "Failed"];
-      }
-      activeIdx = Math.min(failedAt, 3);
-    } else {
-      texts = successTexts[stage] || successTexts[0];
-      activeIdx = stage;
+  function setPipeline(modeOrStage, failedAt) {
+    // Back-compat: numeric stage / failedAt from older call sites
+    let mode = modeOrStage;
+    if (typeof modeOrStage === "number") {
+      if (failedAt === 1) mode = "fetch_error";
+      else if (failedAt === 2 || failedAt === 3) mode = "analyze_error";
+      else if (modeOrStage === 0) mode = "idle";
+      else if (modeOrStage === 1) mode = "fetching";
+      else if (modeOrStage === 2) mode = "analyzing";
+      else if (modeOrStage === 3) mode = "settled";
+      else if (modeOrStage === 4) mode = "analyze_error"; // never paint step3 as Failed
+      else mode = "idle";
     }
 
-    steps.forEach((id, i) => {
-      const el = $(id);
-      if (!el) return;
+    const conf = PIPE_MODES[mode] || PIPE_MODES.idle;
+    const root = $("pipeline");
+    if (root) root.setAttribute("data-mode", mode);
+
+    for (let i = 0; i < 4; i++) {
+      const el = $("pipe" + i);
+      const st = $("st" + i) || (el && el.querySelector(".state"));
+      if (!el) continue;
       el.classList.remove("active", "done", "failed");
-      const st = el.querySelector(".state");
-      if (st) st.textContent = texts[i];
+      const c = conf.cls[i];
+      if (c) el.classList.add(c);
+      // HARD RULE: step 3 (Settled) never displays "Failed" / "Error"
+      let text = conf.texts[i];
+      if (i === 3 && /fail|error/i.test(String(text))) text = "—";
+      if (st) st.textContent = text;
+    }
+  }
 
-      if (failedAt != null) {
-        if (i < activeIdx) el.classList.add("done");
-        else if (i === activeIdx) {
-          el.classList.add("active", "failed");
-        }
-        return;
-      }
-
-      if (stage === 3) {
-        // All complete — including Settled
-        el.classList.add("done");
-        return;
-      }
-      if (i < stage) el.classList.add("done");
-      else if (i === stage) el.classList.add("active");
-    });
+  function parseScores(raw) {
+    // Always use positional indices — avoid named Result quirks (e.g. .status)
+    return {
+      score: Number(raw[0]),
+      tier: Number(raw[1]),
+      lastUpdated: raw[2],
+      dataHash: raw[3],
+      status: Number(raw[4]),
+      reasoning: raw[5] != null ? String(raw[5]) : "",
+    };
   }
 
   function statusToPipeline(status) {
     // RequestStatus: None=0 DataFetched=1 Analyzing=2 Settled=3 Failed=4
-    if (status === 3) setPipeline(3);
-    else if (status === 4) setPipeline(2, 2); // failed during analyze — not on Settled row as default success
-    else if (status === 1) setPipeline(1);
-    else if (status === 2) setPipeline(2);
-    else setPipeline(0);
+    const n = Number(status);
+    if (n === 3) setPipeline("settled");
+    else if (n === 4) setPipeline("analyze_error");
+    else if (n === 1) setPipeline("fetching");
+    else if (n === 2) setPipeline("analyzing");
+    else setPipeline("idle");
+  }
+
+  function txOk(rc) {
+    if (!rc) return true;
+    // ethers v6 may use number or bigint
+    const s = rc.status;
+    if (s === undefined || s === null) return true;
+    return Number(s) === 1;
   }
 
   function friendlyError(e) {
@@ -366,6 +390,18 @@
     return msg.length > 140 ? msg.slice(0, 140) + "…" : msg;
   }
 
+  async function syncFromChain(user, { toastSettled } = {}) {
+    if (!isConfigured() || !ethers.isAddress(user)) return null;
+    const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
+    const raw = await core.scores(user);
+    const s = parseScores(raw);
+    showResult(s.score, s.tier, s.reasoning, STATUS_LABELS[s.status] || s.status, s.status, s.lastUpdated);
+    statusToPipeline(s.status);
+    log(`Sync ${shortAddr(user)} score=${s.score} status=${STATUS_LABELS[s.status] || s.status}`);
+    if (toastSettled && s.status === 3) toast("Score settled on-chain");
+    return s;
+  }
+
   // ─── Actions ──────────────────────────────────────────────────────────────
   async function readScore() {
     const user = ($("userAddress").value || "").trim();
@@ -377,23 +413,14 @@
       const hit = cfg.showcase.find((s) => s.address.toLowerCase() === user.toLowerCase());
       if (hit) {
         showResult(hit.score, hit.tier, hit.reasoning, "Sample", 3);
-        setPipeline(3);
+        setPipeline("settled");
         return;
       }
       toast("Contracts not configured — paste Core/Agent addresses or use a sample wallet from the board.");
       return;
     }
     try {
-      const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
-      const s = await core.scores(user);
-      const score = Number(s.score ?? s[0]);
-      const tier = Number(s.riskTier ?? s[1]);
-      const status = Number(s.status ?? s[4]);
-      const reasoning = s.reasoning ?? s[5] ?? "";
-      const lastUpdated = s.lastUpdated ?? s[2];
-      showResult(score, tier, reasoning, STATUS_LABELS[status] || status, status, lastUpdated);
-      statusToPipeline(status);
-      log(`Read ${shortAddr(user)} score=${score} status=${STATUS_LABELS[status]}`);
+      await syncFromChain(user);
     } catch (e) {
       toast(friendlyError(e));
       log("read error: " + (e.message || e));
@@ -404,14 +431,13 @@
     const box = $("resultBox");
     if (!box) return;
     const ms = lastUpdated ? Number(lastUpdated) : 0;
-    // Ritual timestamps are milliseconds
     const when =
       ms > 1e12
         ? new Date(ms).toLocaleString()
         : ms > 0
           ? new Date(ms * 1000).toLocaleString()
           : "—";
-    const settled = status === 3 || status === undefined;
+    const settled = Number(status) === 3 || status === undefined;
     box.innerHTML = `
       <div class="result-score">${settled ? score : "—"}</div>
       <div style="margin-top:0.5rem">
@@ -421,6 +447,13 @@
       <div class="result-meta">Updated: ${when}</div>
       <div class="reasoning">${reasoning || (settled ? "No reasoning." : "Chưa settle — đợi Scheduler hoặc Analyze Manual.")}</div>
     `;
+  }
+
+  function linkTx(hash) {
+    const link = $("explorerLink");
+    if (!link || !hash) return;
+    link.href = `${cfg.explorerUrl}/tx/${hash}`;
+    link.style.display = "inline";
   }
 
   async function requestScore() {
@@ -439,23 +472,21 @@
     }
     try {
       await ensureRitualChain();
-      setPipeline(1);
+      setPipeline("fetching");
       const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
       const fee = {
         maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
         maxFeePerGas: ethers.parseUnits("30", "gwei"),
       };
 
-      // fetchData only (lighter than requestAndFetch); works for any user
       let tx;
       try {
         tx = await agent["fetchData(address)"](user, fee);
       } catch (e1) {
-        // Fallback full entry
         try {
           tx = await agent.requestAndFetch(user, fee);
         } catch (e2) {
-          setPipeline(1, 1);
+          setPipeline("fetch_error");
           toast(friendlyError(e2));
           log("request error: " + (e2.message || e2));
           return;
@@ -464,29 +495,62 @@
 
       log("tx submitted " + tx.hash);
       toast("Fetch tx submitted…");
-      const link = $("explorerLink");
-      if (link) {
-        link.href = `${cfg.explorerUrl}/tx/${tx.hash}`;
-        link.style.display = "inline";
-      }
+      linkTx(tx.hash);
       const rc = await tx.wait();
-      if (rc && rc.status === 0) {
-        setPipeline(1, 1);
+      if (!txOk(rc)) {
+        setPipeline("fetch_error");
         toast("Fetch transaction reverted on-chain.");
         log("fetch reverted " + tx.hash);
         return;
       }
       log("fetch confirmed block " + (rc?.blockNumber ?? "?"));
-      setPipeline(2);
-      toast("Data fetched — waiting for Scheduler… (hoặc bấm Analyze Manual)");
-      startPolling(user);
+      setPipeline("analyzing");
+
+      // Mock mode: auto-analyze so demo doesn't depend on Scheduler latency
+      let autoSettled = false;
+      try {
+        const isMock = await agent.mockMode();
+        if (isMock) {
+          toast("Mock mode — auto Analyze…");
+          const tx2 = await agent.analyzeScoreManual(user, fee);
+          log("auto-analyze " + tx2.hash);
+          linkTx(tx2.hash);
+          const rc2 = await tx2.wait();
+          if (txOk(rc2)) {
+            autoSettled = true;
+            const s = await syncFromChain(user, { toastSettled: true });
+            if (s && s.status === 3) {
+              await loadOnChainStats();
+              return;
+            }
+            // Scheduler may have already cleared pendingData; re-sync
+            setPipeline("settled");
+            await syncFromChain(user, { toastSettled: true });
+            await loadOnChainStats();
+            return;
+          }
+        }
+      } catch (autoErr) {
+        // Scheduler may have already settled → NoPendingData is OK
+        log("auto-analyze skip: " + (autoErr.shortMessage || autoErr.message || autoErr));
+        const s = await syncFromChain(user).catch(() => null);
+        if (s && s.status === 3) {
+          toast("Score settled on-chain");
+          await loadOnChainStats();
+          return;
+        }
+      }
+
+      if (!autoSettled) {
+        toast("Data fetched — waiting for Scheduler… (hoặc Analyze Manual)");
+        startPolling(user);
+      }
     } catch (e) {
-      // User reject → don't paint Settled as Failed
       if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
-        setPipeline(0);
+        setPipeline("idle");
         toast(friendlyError(e));
       } else {
-        setPipeline(1, 1);
+        setPipeline("fetch_error");
         toast(friendlyError(e));
       }
       log("request error: " + (e.message || e));
@@ -509,34 +573,48 @@
     }
     try {
       await ensureRitualChain();
-      setPipeline(2);
+      // Already settled?
+      const existing = await syncFromChain(user).catch(() => null);
+      if (existing && existing.status === 3) {
+        toast("Địa chỉ này đã Settled.");
+        return;
+      }
+
+      setPipeline("analyzing");
       const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
-      const tx = await agent.analyzeScoreManual(user, {
+      const fee = {
         maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
         maxFeePerGas: ethers.parseUnits("30", "gwei"),
-      });
+      };
+      const tx = await agent.analyzeScoreManual(user, fee);
       log("analyze tx " + tx.hash);
-      const link = $("explorerLink");
-      if (link) {
-        link.href = `${cfg.explorerUrl}/tx/${tx.hash}`;
-        link.style.display = "inline";
-      }
+      linkTx(tx.hash);
       const rc = await tx.wait();
-      if (rc && rc.status === 0) {
-        setPipeline(2, 2);
+      if (!txOk(rc)) {
+        // Maybe scheduler settled concurrently
+        const s = await syncFromChain(user).catch(() => null);
+        if (s && s.status === 3) {
+          toast("Score settled on-chain");
+          return;
+        }
+        setPipeline("analyze_error");
         toast("Analyze transaction reverted.");
         return;
       }
-      toast("Score settled");
-      setPipeline(3);
-      await readScore();
+      await syncFromChain(user, { toastSettled: true });
       await loadOnChainStats();
     } catch (e) {
+      // NoPendingData often means Scheduler already settled
+      const s = await syncFromChain(user).catch(() => null);
+      if (s && s.status === 3) {
+        toast("Score settled on-chain (Scheduler)");
+        return;
+      }
       if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
-        setPipeline(2);
+        setPipeline("analyzing");
         toast(friendlyError(e));
       } else {
-        setPipeline(2, 2);
+        setPipeline("analyze_error");
         toast(friendlyError(e));
       }
       log("analyze error: " + (e.message || e));
@@ -549,35 +627,21 @@
     pollTimer = setInterval(async () => {
       ticks++;
       try {
-        const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
-        const s = await core.scores(user);
-        const status = Number(s.status ?? s[4]);
-        if (status === 1) setPipeline(1);
-        if (status === 2) setPipeline(2);
-        if (status === 3) {
-          setPipeline(3);
-          showResult(
-            Number(s.score ?? s[0]),
-            Number(s.riskTier ?? s[1]),
-            s.reasoning ?? s[5],
-            "Settled",
-            3,
-            s.lastUpdated ?? s[2]
-          );
+        const s = await syncFromChain(user);
+        if (!s) return;
+        if (s.status === 3) {
           toast("Score settled on-chain");
           clearInterval(pollTimer);
           loadOnChainStats();
-        }
-        if (status === 4) {
-          setPipeline(2, 2);
-          toast("On-chain status Failed — thử Request lại.");
+        } else if (s.status === 4) {
+          setPipeline("analyze_error");
+          toast("On-chain analyze failed — thử Request lại.");
           clearInterval(pollTimer);
         }
       } catch (_) {}
       if (ticks > 45) {
         clearInterval(pollTimer);
-        // Still analyzing — keep step 2 active, do NOT mark Settled as failed
-        setPipeline(2);
+        setPipeline("analyzing");
         toast("Scheduler chậm — bấm Analyze Manual để settle.");
         log("poll timeout — use Analyze Manual");
       }
@@ -608,7 +672,7 @@
   function init() {
     initPublic();
     wireWalletEvents();
-    setPipeline(0);
+    setPipeline("idle");
     updateAccountStatus(false);
 
     $("walletBtn")?.addEventListener("click", connectWallet);

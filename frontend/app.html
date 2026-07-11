@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PrivaScore App · Ritual</title>
-    <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/style.css?v=4" />
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js" defer></script>
-    <script src="js/config.js" defer></script>
-    <script src="js/app.js" defer></script>
+    <script src="js/config.js?v=4" defer></script>
+    <script src="js/app.js?v=4" defer></script>
   </head>
   <body>
     <div class="container app-shell">
@@ -54,26 +54,26 @@
             Dán địa chỉ ví → <strong>Request Update</strong> (cần MetaMask trên Ritual 1979). Scheduler sẽ tự analyze; nếu chờ lâu bấm <strong>Analyze Manual</strong>.
           </p>
 
-          <div class="pipeline" aria-label="Multi-block pipeline">
-            <div class="pipe-step" id="pipe0">
+          <div class="pipeline" id="pipeline" aria-label="Multi-block pipeline" data-mode="idle">
+            <div class="pipe-step" id="pipe0" data-step="0">
               <span class="idx">0</span>
-              <span>Idle / ready</span>
-              <span class="state">Ready</span>
+              <span class="pipe-label">Idle / ready</span>
+              <span class="state" id="st0">Ready</span>
             </div>
-            <div class="pipe-step" id="pipe1">
+            <div class="pipe-step" id="pipe1" data-step="1">
               <span class="idx">1</span>
-              <span>Fetching data (HTTP / mock)</span>
-              <span class="state">Waiting</span>
+              <span class="pipe-label">Fetching data</span>
+              <span class="state" id="st1">Waiting</span>
             </div>
-            <div class="pipe-step" id="pipe2">
+            <div class="pipe-step" id="pipe2" data-step="2">
               <span class="idx">2</span>
-              <span>Analyzing (Scheduler → LLM)</span>
-              <span class="state">Waiting</span>
+              <span class="pipe-label">Analyzing (Scheduler / LLM)</span>
+              <span class="state" id="st2">Waiting</span>
             </div>
-            <div class="pipe-step" id="pipe3">
+            <div class="pipe-step" id="pipe3" data-step="3">
               <span class="idx">3</span>
-              <span>Settled · SBT credential</span>
-              <span class="state">Waiting</span>
+              <span class="pipe-label">Settled · SBT credential</span>
+              <span class="state" id="st3">Waiting</span>
             </div>
           </div>
 
