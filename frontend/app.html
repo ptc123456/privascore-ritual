@@ -46,11 +46,13 @@
             <input id="userAddress" type="text" spellcheck="false" autocomplete="off" placeholder="0x…" />
           </div>
           <div class="row-actions">
-            <button type="button" class="btn" id="btnRandom">Generate Random</button>
             <button type="button" class="btn" id="btnRead">Read Score</button>
             <button type="button" class="btn btn-primary" id="btnRequest">Request Update</button>
             <button type="button" class="btn btn-ghost" id="btnAnalyze">Analyze Manual</button>
           </div>
+          <p class="muted" style="font-size:0.82rem;margin:0.35rem 0 0.75rem">
+            Dán địa chỉ ví → <strong>Request Update</strong> (cần MetaMask trên Ritual 1979). Scheduler sẽ tự analyze; nếu chờ lâu bấm <strong>Analyze Manual</strong>.
+          </p>
 
           <div class="pipeline" aria-label="Multi-block pipeline">
             <div class="pipe-step" id="pipe0">

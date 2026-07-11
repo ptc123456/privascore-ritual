@@ -282,6 +282,15 @@ a:hover { text-decoration: underline; }
   background: rgba(94, 234, 212, 0.18);
   color: var(--accent);
 }
+.pipe-step.failed {
+  border-color: rgba(251, 113, 133, 0.45);
+  background: rgba(251, 113, 133, 0.08);
+}
+.pipe-step.failed .idx {
+  background: rgba(251, 113, 133, 0.2);
+  color: var(--danger);
+}
+.pipe-step.failed .state { color: var(--danger); }
 .pipe-step .state { font-size: 0.75rem; color: var(--muted); font-weight: 600; }
 
 /* Result */

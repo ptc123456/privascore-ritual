@@ -288,38 +288,85 @@
   }
 
   // ─── Pipeline UI ──────────────────────────────────────────────────────────
-  function setPipeline(stage) {
-    // stage: 0 idle, 1 fetching, 2 analyzing, 3 settled, 4 failed
+  /**
+   * stage: 0 idle | 1 fetching | 2 analyzing | 3 settled (success)
+   * failedAt: optional 1|2|3 — marks which step failed (never paint "Settled" as Failed on success path)
+   */
+  function setPipeline(stage, failedAt) {
     const steps = ["pipe0", "pipe1", "pipe2", "pipe3"];
+    // success-path status labels per stage
+    const successTexts = {
+      0: ["Ready", "Waiting", "Waiting", "Waiting"],
+      1: ["Done", "In progress…", "Waiting", "Waiting"],
+      2: ["Done", "Done", "In progress…", "Waiting"],
+      3: ["Done", "Done", "Done", "Settled"],
+    };
+
+    let texts;
+    let activeIdx;
+    if (failedAt != null) {
+      // Build: steps before fail = Done, fail step = Failed, rest = Not reached
+      texts = ["Waiting", "Waiting", "Waiting", "Waiting"];
+      for (let i = 0; i < failedAt; i++) texts[i] = "Done";
+      texts[failedAt] = "Failed";
+      for (let i = failedAt + 1; i < 4; i++) texts[i] = "Not reached";
+      // Fetch fail → failedAt 1; analyze/tx fail → 2; on-chain Failed status → 2 (not step 3)
+      if (failedAt >= 3) {
+        texts = ["Done", "Done", "Done", "Failed"];
+      }
+      activeIdx = Math.min(failedAt, 3);
+    } else {
+      texts = successTexts[stage] || successTexts[0];
+      activeIdx = stage;
+    }
+
     steps.forEach((id, i) => {
       const el = $(id);
       if (!el) return;
-      el.classList.remove("active", "done");
+      el.classList.remove("active", "done", "failed");
       const st = el.querySelector(".state");
-      if (stage === 4 && i === 3) {
-        el.classList.add("active");
-        if (st) st.textContent = "Failed";
+      if (st) st.textContent = texts[i];
+
+      if (failedAt != null) {
+        if (i < activeIdx) el.classList.add("done");
+        else if (i === activeIdx) {
+          el.classList.add("active", "failed");
+        }
         return;
       }
-      if (i < stage) {
+
+      if (stage === 3) {
+        // All complete — including Settled
         el.classList.add("done");
-        if (st) st.textContent = "Done";
-      } else if (i === stage) {
-        el.classList.add("active");
-        if (st) st.textContent = i === 0 ? "Ready" : "In progress…";
-      } else if (st) st.textContent = "Waiting";
+        return;
+      }
+      if (i < stage) el.classList.add("done");
+      else if (i === stage) el.classList.add("active");
     });
   }
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
-  function randomAddress() {
-    const bytes = ethers.randomBytes(20);
-    const addr = ethers.getAddress(ethers.hexlify(bytes));
-    $("userAddress").value = addr;
-    toast("Random address generated");
-    return addr;
+  function statusToPipeline(status) {
+    // RequestStatus: None=0 DataFetched=1 Analyzing=2 Settled=3 Failed=4
+    if (status === 3) setPipeline(3);
+    else if (status === 4) setPipeline(2, 2); // failed during analyze — not on Settled row as default success
+    else if (status === 1) setPipeline(1);
+    else if (status === 2) setPipeline(2);
+    else setPipeline(0);
   }
 
+  function friendlyError(e) {
+    const msg = e?.shortMessage || e?.reason || e?.message || String(e);
+    if (/user rejected|ACTION_REJECTED|denied/i.test(msg)) return "Bạn đã hủy giao dịch trên ví.";
+    if (/AnalyzeAlreadyPending|already pending/i.test(msg))
+      return "Đang có analyze pending — đợi Scheduler hoặc bấm Analyze Manual.";
+    if (/NoPendingData|no pending/i.test(msg))
+      return "Chưa có data fetch — bấm Request Update trước.";
+    if (/insufficient|funds|gas/i.test(msg)) return "Không đủ RITUAL gas / phí Scheduler.";
+    if (/network|chain/i.test(msg)) return "Sai mạng — chuyển MetaMask sang Ritual (1979).";
+    return msg.length > 140 ? msg.slice(0, 140) + "…" : msg;
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────
   async function readScore() {
     const user = ($("userAddress").value || "").trim();
     if (!ethers.isAddress(user)) {
@@ -327,14 +374,13 @@
       return;
     }
     if (!isConfigured()) {
-      // Showcase fallback
       const hit = cfg.showcase.find((s) => s.address.toLowerCase() === user.toLowerCase());
       if (hit) {
-        showResult(hit.score, hit.tier, hit.reasoning, "Showcase", 3);
+        showResult(hit.score, hit.tier, hit.reasoning, "Sample", 3);
         setPipeline(3);
         return;
       }
-      toast("Contracts not deployed/configured — try a showcase address or Generate Random + connect after deploy");
+      toast("Contracts not configured — paste Core/Agent addresses or use a sample wallet from the board.");
       return;
     }
     try {
@@ -346,10 +392,10 @@
       const reasoning = s.reasoning ?? s[5] ?? "";
       const lastUpdated = s.lastUpdated ?? s[2];
       showResult(score, tier, reasoning, STATUS_LABELS[status] || status, status, lastUpdated);
-      setPipeline(status === 3 ? 3 : status === 4 ? 4 : status === 1 ? 1 : status === 2 ? 2 : 0);
+      statusToPipeline(status);
       log(`Read ${shortAddr(user)} score=${score} status=${STATUS_LABELS[status]}`);
     } catch (e) {
-      toast(e.shortMessage || e.message || "Read failed");
+      toast(friendlyError(e));
       log("read error: " + (e.message || e));
     }
   }
@@ -365,14 +411,15 @@
         : ms > 0
           ? new Date(ms * 1000).toLocaleString()
           : "—";
+    const settled = status === 3 || status === undefined;
     box.innerHTML = `
-      <div class="result-score">${status === 3 || status === undefined ? score : "—"}</div>
+      <div class="result-score">${settled ? score : "—"}</div>
       <div style="margin-top:0.5rem">
-        <span class="tier-pill ${tierClass(tier)}">${TIER_LABELS[tier] ?? "—"}</span>
+        <span class="tier-pill ${tierClass(tier)}">${settled ? TIER_LABELS[tier] ?? "—" : "—"}</span>
         <span class="muted" style="margin-left:0.5rem">Status: ${statusLabel}</span>
       </div>
       <div class="result-meta">Updated: ${when}</div>
-      <div class="reasoning">${reasoning || "No reasoning yet."}</div>
+      <div class="reasoning">${reasoning || (settled ? "No reasoning." : "Chưa settle — đợi Scheduler hoặc Analyze Manual.")}</div>
     `;
   }
 
@@ -391,44 +438,77 @@
       return;
     }
     try {
+      await ensureRitualChain();
       setPipeline(1);
       const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
-      // Prefer requestAndFetch (core request + fetch + schedule) when available
+      const fee = {
+        maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
+        maxFeePerGas: ethers.parseUnits("30", "gwei"),
+      };
+
+      // fetchData only (lighter than requestAndFetch); works for any user
       let tx;
       try {
-        tx = await agent.requestAndFetch(user, {
-          maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
-          maxFeePerGas: ethers.parseUnits("30", "gwei"),
-        });
-      } catch (_) {
-        tx = await agent["fetchData(address)"](user, {
-          maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
-          maxFeePerGas: ethers.parseUnits("30", "gwei"),
-        });
+        tx = await agent["fetchData(address)"](user, fee);
+      } catch (e1) {
+        // Fallback full entry
+        try {
+          tx = await agent.requestAndFetch(user, fee);
+        } catch (e2) {
+          setPipeline(1, 1);
+          toast(friendlyError(e2));
+          log("request error: " + (e2.message || e2));
+          return;
+        }
       }
+
       log("tx submitted " + tx.hash);
       toast("Fetch tx submitted…");
-      $("explorerLink").href = `${cfg.explorerUrl}/tx/${tx.hash}`;
-      $("explorerLink").style.display = "inline";
+      const link = $("explorerLink");
+      if (link) {
+        link.href = `${cfg.explorerUrl}/tx/${tx.hash}`;
+        link.style.display = "inline";
+      }
       const rc = await tx.wait();
-      log("fetch confirmed block " + rc.blockNumber);
+      if (rc && rc.status === 0) {
+        setPipeline(1, 1);
+        toast("Fetch transaction reverted on-chain.");
+        log("fetch reverted " + tx.hash);
+        return;
+      }
+      log("fetch confirmed block " + (rc?.blockNumber ?? "?"));
       setPipeline(2);
-      toast("Data fetched — waiting for Scheduler / analyze…");
+      toast("Data fetched — waiting for Scheduler… (hoặc bấm Analyze Manual)");
       startPolling(user);
     } catch (e) {
-      setPipeline(4);
-      toast(e.shortMessage || e.message || "Tx failed");
+      // User reject → don't paint Settled as Failed
+      if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
+        setPipeline(0);
+        toast(friendlyError(e));
+      } else {
+        setPipeline(1, 1);
+        toast(friendlyError(e));
+      }
       log("request error: " + (e.message || e));
     }
   }
 
   async function analyzeManual() {
     const user = ($("userAddress").value || "").trim();
-    if (!ethers.isAddress(user) || !signer || !isConfigured()) {
-      toast("Connect wallet, set address, ensure contracts configured");
+    if (!ethers.isAddress(user)) {
+      toast("Enter a valid address");
+      return;
+    }
+    if (!signer) {
+      await connectWallet();
+      if (!signer) return;
+    }
+    if (!isConfigured()) {
+      toast("Connect wallet and ensure contracts configured");
       return;
     }
     try {
+      await ensureRitualChain();
       setPipeline(2);
       const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
       const tx = await agent.analyzeScoreManual(user, {
@@ -436,13 +516,29 @@
         maxFeePerGas: ethers.parseUnits("30", "gwei"),
       });
       log("analyze tx " + tx.hash);
-      await tx.wait();
-      toast("Analyze settled");
+      const link = $("explorerLink");
+      if (link) {
+        link.href = `${cfg.explorerUrl}/tx/${tx.hash}`;
+        link.style.display = "inline";
+      }
+      const rc = await tx.wait();
+      if (rc && rc.status === 0) {
+        setPipeline(2, 2);
+        toast("Analyze transaction reverted.");
+        return;
+      }
+      toast("Score settled");
       setPipeline(3);
       await readScore();
       await loadOnChainStats();
     } catch (e) {
-      toast(e.shortMessage || e.message || "Analyze failed");
+      if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
+        setPipeline(2);
+        toast(friendlyError(e));
+      } else {
+        setPipeline(2, 2);
+        toast(friendlyError(e));
+      }
       log("analyze error: " + (e.message || e));
     }
   }
@@ -473,13 +569,17 @@
           loadOnChainStats();
         }
         if (status === 4) {
-          setPipeline(4);
+          setPipeline(2, 2);
+          toast("On-chain status Failed — thử Request lại.");
           clearInterval(pollTimer);
         }
       } catch (_) {}
-      if (ticks > 60) {
+      if (ticks > 45) {
         clearInterval(pollTimer);
-        log("poll timeout — try Analyze Manual if mockMode and schedule lag");
+        // Still analyzing — keep step 2 active, do NOT mark Settled as failed
+        setPipeline(2);
+        toast("Scheduler chậm — bấm Analyze Manual để settle.");
+        log("poll timeout — use Analyze Manual");
       }
     }, 2000);
   }
@@ -512,7 +612,6 @@
     updateAccountStatus(false);
 
     $("walletBtn")?.addEventListener("click", connectWallet);
-    $("btnRandom")?.addEventListener("click", randomAddress);
     $("btnRead")?.addEventListener("click", readScore);
     $("btnRequest")?.addEventListener("click", requestScore);
     $("btnAnalyze")?.addEventListener("click", analyzeManual);
