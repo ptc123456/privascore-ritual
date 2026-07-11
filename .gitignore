@@ -1,0 +1,26 @@
+# Foundry
+cache/
+out/
+broadcast/
+
+# Dependencies (tracked via git submodules; ignore local build artifacts)
+node_modules/
+
+# Env / secrets — never commit
+.env
+.env.local
+.env.*
+!.env.example
+*.keystore
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Coverage / gas reports
+lcov.info
+gas-report.txt

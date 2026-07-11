@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="PrivaScore — autonomous on-chain risk & trust credentials powered by Ritual AI precompiles."
+    />
+    <title>PrivaScore · Ritual Testnet</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <nav class="nav" aria-label="Primary">
+        <div class="logo">
+          <span class="logo-mark" aria-hidden="true"></span>
+          PrivaScore
+        </div>
+        <div class="nav-actions">
+          <a class="btn btn-ghost btn-sm" href="https://docs.ritualfoundation.org" target="_blank" rel="noopener">Docs</a>
+          <a class="btn btn-primary" href="app.html">Launch App</a>
+        </div>
+      </nav>
+
+      <header class="hero">
+        <div>
+          <div class="badge">Ritual Testnet · Chain ID 1979 · TEE AI Agent</div>
+          <h1>
+            Autonomous risk scores.<br />
+            <span>Soulbound. Verifiable.</span>
+          </h1>
+          <p class="lead">
+            PrivaScore is an on-chain trust credential system. An AI agent on Ritual fetches
+            behavioral data via the HTTP precompile, analyzes it with an LLM in a TEE, and
+            mints a non-transferable SBT — scheduled across blocks without keepers.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="app.html">Open Dashboard</a>
+            <a class="btn" href="https://explorer.ritualfoundation.org" target="_blank" rel="noopener">Explorer</a>
+            <a class="btn btn-ghost" href="https://faucet.ritualfoundation.org" target="_blank" rel="noopener">Faucet</a>
+          </div>
+          <div class="meta-row">
+            <span><strong>HTTP</strong> 0x0801</span>
+            <span><strong>LLM</strong> 0x0802 · GLM-4.7-FP8</span>
+            <span><strong>Scheduler</strong> multi-block flow</span>
+          </div>
+        </div>
+        <aside class="glass preview-card" aria-label="Sample credential">
+          <h3>Sample credential</h3>
+          <div class="score-ring" style="--p: 74">
+            <strong>742</strong>
+          </div>
+          <div style="text-align: center; margin-bottom: 0.75rem">
+            <span class="tier-pill tier-low">Low risk</span>
+          </div>
+          <p class="muted" style="font-size: 0.88rem; text-align: center">
+            “Solid on-chain footprint. Healthy activity density, diversified venues.”
+          </p>
+          <p class="muted mono" style="font-size: 0.72rem; text-align: center; margin-top: 0.75rem">
+            SBT · ERC-721 soulbound · on-chain tokenURI
+          </p>
+        </aside>
+      </header>
+
+      <section class="section">
+        <h2>How it works</h2>
+        <p class="sub">Two async precompile steps · one transaction each · Scheduler bridges the gap.</p>
+        <div class="grid-3">
+          <article class="glass step-card">
+            <div class="step-num">1</div>
+            <h3>Fetch data</h3>
+            <p>
+              Agent calls the HTTP precompile (0x0801) inside a TEE to pull activity signals.
+              Pending payload is stored; status becomes <strong>DataFetched</strong>.
+            </p>
+          </article>
+          <article class="glass step-card">
+            <div class="step-num">2</div>
+            <h3>Schedule analyze</h3>
+            <p>
+              Same transaction registers a one-shot Scheduler job. Next blocks, the chain
+              itself invokes <code>analyzeScore</code> — no bot, no second click required.
+            </p>
+          </article>
+          <article class="glass step-card">
+            <div class="step-num">3</div>
+            <h3>LLM + SBT</h3>
+            <p>
+              LLM precompile (0x0802) scores 0–999 with a risk tier and short rationale.
+              Core mints or updates a soulbound credential anyone can verify.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Built for Ritual’s constraints</h2>
+        <p class="sub">Production-minded defaults so demos stay reliable on a live testnet.</p>
+        <div class="grid-3">
+          <article class="glass step-card">
+            <h3>Mock Mode safety net</h3>
+            <p>
+              Owner-toggleable mock path generates deterministic scores without live precompiles —
+              ideal when TEE executors flap during presentations.
+            </p>
+          </article>
+          <article class="glass step-card">
+            <h3>One async per tx</h3>
+            <p>
+              HTTP and LLM never share a transaction. Multi-block orchestration is the feature,
+              not a workaround — and the UI surfaces each stage clearly.
+            </p>
+          </article>
+          <article class="glass step-card">
+            <h3>Read without wallet</h3>
+            <p>
+              Dashboard hits public RPC immediately for stats and leaderboard. Connect MetaMask
+              only when you want to request a new score.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>
+          PrivaScore on Ritual Testnet · RPC
+          <a href="https://rpc.ritualfoundation.org">rpc.ritualfoundation.org</a>
+          ·
+          <a href="app.html">Launch app</a>
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

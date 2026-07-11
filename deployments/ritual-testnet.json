@@ -1,0 +1,24 @@
+{
+  "chainId": 1979,
+  "network": "Ritual Testnet",
+  "rpc": "https://rpc.ritualfoundation.org",
+  "explorer": "https://explorer.ritualfoundation.org",
+  "deployer": "0xa92610eea62f6b45c6BbC859b61f970fC715C4FA",
+  "contracts": {
+    "PrivaToken": "0xd66a39bC33354EC20fC03673D3835eC5C50aE42d",
+    "PrivaScoreCore": "0xcD3bDa961f452D35420042f5c05685Cad9DfDa33",
+    "PrivaScoreAgent": "0x5F7b3D7BE2171B495C58fF548Ea3C91A3f9E5D85"
+  },
+  "system": {
+    "Scheduler": "0x56e776BAE2DD60664b69Bd5F865F1180ffB7D58B",
+    "RitualWallet": "0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948",
+    "AsyncDelivery": "0x5A16214fF555848411544b005f7Ac063742f39F6",
+    "HTTP": "0x0000000000000000000000000000000000000801",
+    "LLM": "0x0000000000000000000000000000000000000802"
+  },
+  "notes": {
+    "mockModeDefault": true,
+    "sampleScoreTxFetch": "0x7d61db81c3e7f08e6c6cc003b5274e61b9ec277a39ef83724f880c74e8eb69ab",
+    "verified": "setAgent + minter + RitualWallet deposit 0.05 + mock E2E settled via Scheduler"
+  }
+}

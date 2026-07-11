@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PrivaScore App · Ritual</title>
+    <link rel="stylesheet" href="css/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js" defer></script>
+    <script src="js/config.js" defer></script>
+    <script src="js/app.js" defer></script>
+  </head>
+  <body>
+    <div class="container app-shell">
+      <nav class="nav" aria-label="Primary">
+        <a class="logo" href="index.html" style="color: inherit; text-decoration: none">
+          <span class="logo-mark" aria-hidden="true"></span>
+          PrivaScore
+        </a>
+        <div class="nav-actions">
+          <div class="status-bar" aria-live="polite">
+            <span><span id="chainDot" class="dot warn"></span> <span id="chainText">RPC…</span></span>
+            <span><span id="acctDot" class="dot off"></span> <span id="acctText">Not connected</span></span>
+          </div>
+          <button type="button" class="btn btn-primary" id="walletBtn">Connect Wallet</button>
+        </div>
+      </nav>
+
+      <header class="app-header">
+        <div>
+          <h1 style="font-size: 1.6rem; letter-spacing: -0.03em">Scoring dashboard</h1>
+          <p class="muted" style="max-width: 36rem">
+            Read-only data loads from Ritual public RPC without a wallet. Connect MetaMask
+            (chain 1979) to request autonomous score updates.
+          </p>
+        </div>
+        <div class="glass panel" id="onchainStats" style="min-width: min(280px, 100%)">
+          Loading network stats…
+        </div>
+      </header>
+
+      <div class="panel-grid">
+        <section class="glass panel">
+          <h2>Request score</h2>
+          <div class="field">
+            <label for="userAddress">Wallet address to score</label>
+            <input id="userAddress" type="text" spellcheck="false" autocomplete="off" placeholder="0x…" />
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn" id="btnRandom">Generate Random</button>
+            <button type="button" class="btn" id="btnRead">Read Score</button>
+            <button type="button" class="btn btn-primary" id="btnRequest">Request Update</button>
+            <button type="button" class="btn btn-ghost" id="btnAnalyze">Analyze Manual</button>
+          </div>
+
+          <div class="pipeline" aria-label="Multi-block pipeline">
+            <div class="pipe-step" id="pipe0">
+              <span class="idx">0</span>
+              <span>Idle / ready</span>
+              <span class="state">Ready</span>
+            </div>
+            <div class="pipe-step" id="pipe1">
+              <span class="idx">1</span>
+              <span>Fetching data (HTTP / mock)</span>
+              <span class="state">Waiting</span>
+            </div>
+            <div class="pipe-step" id="pipe2">
+              <span class="idx">2</span>
+              <span>Analyzing (Scheduler → LLM)</span>
+              <span class="state">Waiting</span>
+            </div>
+            <div class="pipe-step" id="pipe3">
+              <span class="idx">3</span>
+              <span>Settled · SBT credential</span>
+              <span class="state">Waiting</span>
+            </div>
+          </div>
+
+          <div class="result-box" id="resultBox">
+            <p class="muted">Score result appears here after read or settlement.</p>
+          </div>
+
+          <p style="margin-top: 0.75rem">
+            <a id="explorerLink" href="#" target="_blank" rel="noopener" style="display: none">View tx on explorer ↗</a>
+          </p>
+          <div class="log" id="txLog" aria-live="polite"></div>
+        </section>
+
+        <aside>
+          <section class="glass panel" style="margin-bottom: 1rem">
+            <h2>Leaderboard <span class="muted" id="lbTag" style="font-weight: 500; font-size: 0.8rem">Showcase</span></h2>
+            <div style="overflow-x: auto">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Address</th>
+                    <th>Score</th>
+                    <th>Tier</th>
+                    <th>Note</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="leaderboardBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="glass panel">
+            <h2>Contract config</h2>
+            <p class="muted" style="font-size: 0.82rem; margin-bottom: 0.75rem">
+              After deploy, paste addresses (stored in localStorage). Priority fee ≥ 1 gwei on all txs.
+            </p>
+            <div class="field">
+              <label for="cfgCore">PrivaScoreCore</label>
+              <input id="cfgCore" class="mono" spellcheck="false" />
+            </div>
+            <div class="field">
+              <label for="cfgAgent">PrivaScoreAgent</label>
+              <input id="cfgAgent" class="mono" spellcheck="false" />
+            </div>
+            <div class="field">
+              <label for="cfgToken">PrivaToken</label>
+              <input id="cfgToken" class="mono" spellcheck="false" />
+            </div>
+            <button type="button" class="btn btn-sm" id="btnSaveCfg">Save addresses</button>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="footer">
+        <p>
+          <a href="index.html">← Landing</a>
+          · Faucet
+          <a href="https://faucet.ritualfoundation.org" target="_blank" rel="noopener">faucet.ritualfoundation.org</a>
+          · Explorer
+          <a href="https://explorer.ritualfoundation.org" target="_blank" rel="noopener">explorer</a>
+        </p>
+      </footer>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+  </body>
+</html>
