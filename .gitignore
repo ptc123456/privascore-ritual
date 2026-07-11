@@ -24,3 +24,5 @@ Thumbs.db
 # Coverage / gas reports
 lcov.info
 gas-report.txt
+
+.github/workflows/
