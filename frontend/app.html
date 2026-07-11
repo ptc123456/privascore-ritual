@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PrivaScore App · Ritual</title>
-    <link rel="stylesheet" href="css/style.css?v=5" />
+    <link rel="stylesheet" href="css/style.css?v=6" />
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js" defer></script>
-    <script src="js/config.js?v=5" defer></script>
-    <script src="js/app.js?v=5" defer></script>
+    <script src="js/config.js?v=6" defer></script>
+    <script src="js/app.js?v=6" defer></script>
   </head>
   <body>
     <div class="container app-shell">
@@ -51,10 +51,10 @@
             <button type="button" class="btn btn-ghost" id="btnAnalyze">Analyze Manual</button>
           </div>
           <p class="muted" style="font-size:0.82rem;margin:0.35rem 0 0.75rem">
-            Dán địa chỉ (hoặc bấm <strong>Use</strong> trên bảng) → Connect MetaMask (Ritual <strong>1979</strong>) →
-            <strong>Request Update</strong>. Mock mode sẽ tự fetch + analyze trong 1–2 giao dịch.
-            Nếu pipeline dừng ở bước Analyzing, bấm <strong>Analyze Manual</strong>.
-            <strong>Read Score</strong> chỉ đọc on-chain, không gửi tx.
+            Paste an address (or click <strong>Use</strong> on the board) → connect MetaMask on Ritual
+            <strong>1979</strong> → <strong>Request Update</strong>. In mock mode, fetch + analyze run
+            across 1–2 transactions. If the pipeline stalls on Analyzing, click
+            <strong>Analyze Manual</strong>. <strong>Read Score</strong> is read-only (no transaction).
           </p>
 
           <div class="pipeline" id="pipeline" aria-label="Multi-block pipeline" data-mode="idle">

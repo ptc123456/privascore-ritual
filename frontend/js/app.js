@@ -380,13 +380,13 @@
 
   function friendlyError(e) {
     const msg = e?.shortMessage || e?.reason || e?.message || String(e);
-    if (/user rejected|ACTION_REJECTED|denied/i.test(msg)) return "Bạn đã hủy giao dịch trên ví.";
+    if (/user rejected|ACTION_REJECTED|denied/i.test(msg)) return "Transaction rejected in wallet.";
     if (/AnalyzeAlreadyPending|already pending/i.test(msg))
-      return "Đang có analyze pending — đợi Scheduler hoặc bấm Analyze Manual.";
+      return "Analyze already pending — wait for the Scheduler or click Analyze Manual.";
     if (/NoPendingData|no pending/i.test(msg))
-      return "Chưa có data fetch — bấm Request Update trước.";
-    if (/insufficient|funds|gas/i.test(msg)) return "Không đủ RITUAL gas / phí Scheduler.";
-    if (/network|chain/i.test(msg)) return "Sai mạng — chuyển MetaMask sang Ritual (1979).";
+      return "No pending fetch data — click Request Update first.";
+    if (/insufficient|funds|gas/i.test(msg)) return "Insufficient RITUAL for gas / Scheduler fees.";
+    if (/network|chain/i.test(msg)) return "Wrong network — switch MetaMask to Ritual (1979).";
     return msg.length > 140 ? msg.slice(0, 140) + "…" : msg;
   }
 
@@ -445,7 +445,7 @@
         <span class="muted" style="margin-left:0.5rem">Status: ${statusLabel}</span>
       </div>
       <div class="result-meta">Updated: ${when}</div>
-      <div class="reasoning">${reasoning || (settled ? "No reasoning." : "Chưa settle — đợi Scheduler hoặc Analyze Manual.")}</div>
+      <div class="reasoning">${reasoning || (settled ? "No reasoning." : "Not settled yet — wait for the Scheduler or click Analyze Manual.")}</div>
     `;
   }
 
@@ -542,7 +542,7 @@
       }
 
       if (!autoSettled) {
-        toast("Data fetched — waiting for Scheduler… (hoặc Analyze Manual)");
+        toast("Data fetched — waiting for Scheduler… (or Analyze Manual)");
         startPolling(user);
       }
     } catch (e) {
@@ -576,7 +576,7 @@
       // Already settled?
       const existing = await syncFromChain(user).catch(() => null);
       if (existing && existing.status === 3) {
-        toast("Địa chỉ này đã Settled.");
+        toast("This address is already settled.");
         return;
       }
 
@@ -635,14 +635,14 @@
           loadOnChainStats();
         } else if (s.status === 4) {
           setPipeline("analyze_error");
-          toast("On-chain analyze failed — thử Request lại.");
+          toast("On-chain analyze failed — try Request Update again.");
           clearInterval(pollTimer);
         }
       } catch (_) {}
       if (ticks > 45) {
         clearInterval(pollTimer);
         setPipeline("analyzing");
-        toast("Scheduler chậm — bấm Analyze Manual để settle.");
+        toast("Scheduler is slow — click Analyze Manual to settle.");
         log("poll timeout — use Analyze Manual");
       }
     }, 2000);
