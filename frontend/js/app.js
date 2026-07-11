@@ -359,15 +359,38 @@
 
     const btn = $("btnMint");
     if (btn) btn.disabled = true;
-    setMintStatus("Confirm the free mint in MetaMask… (gas only, no mint fee)", "");
+    setMintStatus("Preparing free mint…", "");
 
     try {
+      // 1) Force Ritual chain
       await ensureRitualChain();
-      // Re-bind signer after possible chain switch
-      if (browserProvider) signer = await browserProvider.getSigner();
+      browserProvider = new ethers.BrowserProvider(window.ethereum);
+      signer = await browserProvider.getSigner();
+      account = await signer.getAddress();
 
-      const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
-      const existing = Number(await core.tokenIdOf(account));
+      const net = await browserProvider.getNetwork();
+      if (Number(net.chainId) !== cfg.chainId) {
+        setMintStatus("Still on the wrong network. Switch MetaMask to Ritual Testnet (1979).", "err");
+        toast("Wrong network");
+        if (btn) btn.disabled = false;
+        return;
+      }
+
+      // 2) Need RITUAL for gas
+      const bal = await browserProvider.getBalance(account);
+      if (bal === 0n) {
+        setMintStatus(
+          `Your wallet has <strong>0 RITUAL</strong>. Get free test gas from ` +
+            `<a href="https://faucet.ritualfoundation.org" target="_blank" rel="noopener">the faucet ↗</a>, then try again.`,
+          "err"
+        );
+        toast("Need RITUAL for gas");
+        if (btn) btn.disabled = false;
+        return;
+      }
+
+      const coreRead = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
+      const existing = Number(await coreRead.tokenIdOf(account));
       if (existing > 0) {
         const explorer = `${cfg.explorerUrl}/token/${cfg.contracts.core}/instance/${existing}`;
         setMintStatus(
@@ -384,24 +407,46 @@
       }
 
       const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
-      const fee = {
-        maxPriorityFeePerGas: ethers.parseUnits("1.5", "gwei"),
-        maxFeePerGas: ethers.parseUnits("40", "gwei"),
-        gasLimit: 2_000_000n,
-      };
 
-      setMintStatus("Submitting free mint transaction…", "");
+      // 3) Simulate before opening MetaMask (clearer errors)
+      try {
+        await agent.scoreNow.staticCall(account);
+      } catch (simErr) {
+        // Try fetchData path simulation
+        try {
+          await agent["fetchData(address)"].staticCall(account);
+        } catch (sim2) {
+          setMintStatus("Simulation failed: " + friendlyError(sim2), "err");
+          toast(friendlyError(sim2));
+          log("mint sim error: " + (sim2.message || sim2));
+          if (btn) btn.disabled = false;
+          return;
+        }
+      }
+
+      const overrides = await getMintTxOverrides(agent, "scoreNow", [account]);
+      setMintStatus(
+        `Confirm in MetaMask… (free mint · gas only · ~${overrides.gasLimit.toString()} gas limit)`,
+        ""
+      );
+
       let tx;
       try {
-        tx = await agent.scoreNow(account, fee);
+        tx = await agent.scoreNow(account, overrides);
       } catch (e1) {
         // Fallback: fetchData also settles + mints in mock mode
-        tx = await agent["fetchData(address)"](account, fee);
+        log("scoreNow send failed, trying fetchData: " + (e1.message || e1));
+        const ov2 = await getMintTxOverrides(agent, "fetchData(address)", [account]);
+        try {
+          tx = await agent["fetchData(address)"](account, ov2);
+        } catch (e2) {
+          throw e2;
+        }
       }
 
       log("mint tx " + tx.hash);
       setMintStatus(
-        `Mint tx submitted · <a href="${cfg.explorerUrl}/tx/${tx.hash}" target="_blank" rel="noopener">${shortAddr(tx.hash)}</a>`,
+        `Mint submitted · <a href="${cfg.explorerUrl}/tx/${tx.hash}" target="_blank" rel="noopener">${shortAddr(tx.hash)}</a> · waiting…`,
         ""
       );
       toast("Mint submitted — waiting for confirmation…");
@@ -414,19 +459,18 @@
         return;
       }
 
-      // Confirm token id
       let tid = 0;
-      for (let i = 0; i < 6; i++) {
-        tid = Number(await core.tokenIdOf(account));
+      for (let i = 0; i < 8; i++) {
+        tid = Number(await coreRead.tokenIdOf(account));
         if (tid > 0) break;
-        await sleep(400);
+        await sleep(350);
       }
 
       if (tid > 0) {
         const explorer = `${cfg.explorerUrl}/token/${cfg.contracts.core}/instance/${tid}`;
         let scoreLine = "";
         try {
-          const s = parseScores(await core.scores(account));
+          const s = parseScores(await coreRead.scores(account));
           if (s.status === 3) {
             scoreLine = ` · score <strong>${s.score}</strong> (${TIER_LABELS[s.tier] || s.tier})`;
           }
@@ -444,20 +488,20 @@
         await loadOnChainStats();
       } else {
         setMintStatus(
-          `Transaction confirmed, but certificate id not found yet. Check explorer: ` +
-            `<a href="${cfg.explorerUrl}/tx/${tx.hash}" target="_blank" rel="noopener">tx ↗</a>`,
+          `Tx confirmed, but token id not found yet. ` +
+            `<a href="${cfg.explorerUrl}/tx/${tx.hash}" target="_blank" rel="noopener">Open tx ↗</a>`,
           "err"
         );
         if (btn) btn.disabled = false;
       }
     } catch (e) {
-      if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
+      const nice = friendlyError(e);
+      if (/rejected|cancelled/i.test(nice)) {
         setMintStatus("Mint cancelled in wallet.", "err");
-        toast("Transaction rejected in wallet.");
       } else {
-        setMintStatus(friendlyError(e), "err");
-        toast(friendlyError(e));
+        setMintStatus(nice, "err");
       }
+      toast(nice);
       log("mint error: " + (e.message || e));
       if (btn) btn.disabled = false;
     }
@@ -555,15 +599,64 @@
   }
 
   function friendlyError(e) {
-    const msg = e?.shortMessage || e?.reason || e?.message || String(e);
-    if (/user rejected|ACTION_REJECTED|denied/i.test(msg)) return "Transaction rejected in wallet.";
-    if (/AnalyzeAlreadyPending|already pending/i.test(msg))
-      return "Analyze already pending — wait for the Scheduler or click Analyze Manual.";
-    if (/NoPendingData|no pending/i.test(msg))
-      return "No pending fetch data — click Request Update first.";
-    if (/insufficient|funds|gas/i.test(msg)) return "Insufficient RITUAL for gas / Scheduler fees.";
-    if (/network|chain/i.test(msg)) return "Wrong network — switch MetaMask to Ritual (1979).";
-    return msg.length > 140 ? msg.slice(0, 140) + "…" : msg;
+    // Unwrap ethers v6 "could not coalesce error" / nested RPC payloads
+    const nested =
+      e?.info?.error?.message ||
+      e?.error?.message ||
+      e?.data?.message ||
+      e?.info?.error?.data?.message ||
+      e?.shortMessage ||
+      e?.reason ||
+      e?.message ||
+      String(e);
+    const msg = String(nested || e?.message || e);
+    const raw = String(e?.message || "") + " " + msg;
+
+    if (/user rejected|ACTION_REJECTED|denied/i.test(raw)) return "Transaction rejected in wallet.";
+    if (/insufficient funds|insufficient balance/i.test(raw))
+      return "Not enough RITUAL for gas. Get free test tokens from the Ritual faucet.";
+    if (/coalesce|Transaction failed|-32603|INTERNAL_ERROR/i.test(raw))
+      return "Transaction failed. Use Ritual Testnet (chain 1979) and keep some RITUAL for gas (faucet).";
+    if (/network|chain|wrong network/i.test(raw))
+      return "Wrong network — switch MetaMask to Ritual Testnet (1979).";
+    if (/AnalyzeAlreadyPending|already pending/i.test(raw))
+      return "A previous score job is still pending for this wallet.";
+    if (/NoPendingData|no pending/i.test(raw)) return "Nothing to analyze yet for this wallet.";
+    if (/gas|out of gas/i.test(raw)) return "Out of gas — try again (we use a higher gas limit).";
+    return msg.length > 160 ? msg.slice(0, 160) + "…" : msg;
+  }
+
+  async function getMintTxOverrides(contract, method, args) {
+    // Always pin EIP-1559 fees for Ritual (priority >= 1 gwei)
+    let maxPriorityFeePerGas = ethers.parseUnits("2", "gwei");
+    let maxFeePerGas = ethers.parseUnits("40", "gwei");
+    try {
+      if (browserProvider) {
+        const fd = await browserProvider.getFeeData();
+        if (fd.maxPriorityFeePerGas && fd.maxPriorityFeePerGas > maxPriorityFeePerGas) {
+          maxPriorityFeePerGas = fd.maxPriorityFeePerGas;
+        }
+        if (fd.maxFeePerGas && fd.maxFeePerGas > maxFeePerGas) {
+          maxFeePerGas = fd.maxFeePerGas;
+        }
+      }
+    } catch (_) {}
+    if (maxFeePerGas < maxPriorityFeePerGas * 2n) {
+      maxFeePerGas = maxPriorityFeePerGas * 3n;
+    }
+
+    let gasLimit = 2_000_000n;
+    try {
+      const est = await contract[method].estimateGas(...args);
+      // +40% headroom — Ritual + SBT mint can spike
+      gasLimit = (est * 140n) / 100n;
+      if (gasLimit < 600_000n) gasLimit = 600_000n;
+      if (gasLimit > 3_000_000n) gasLimit = 3_000_000n;
+    } catch (_) {
+      gasLimit = 2_000_000n;
+    }
+
+    return { gasLimit, maxFeePerGas, maxPriorityFeePerGas };
   }
 
   async function syncFromChain(user, { toastSettled } = {}) {
