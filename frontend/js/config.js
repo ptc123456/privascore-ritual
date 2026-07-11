@@ -18,7 +18,7 @@ window.PRIVASCORE_CONFIG = {
   contracts: {
     token: localStorage.getItem("ps_token") || "0xd66a39bC33354EC20fC03673D3835eC5C50aE42d",
     core: localStorage.getItem("ps_core") || "0xcD3bDa961f452D35420042f5c05685Cad9DfDa33",
-    agent: localStorage.getItem("ps_agent") || "0x5F7b3D7BE2171B495C58fF548Ea3C91A3f9E5D85",
+    agent: localStorage.getItem("ps_agent") || "0x9f8A3Fd04bC40a593936B4dfD8798B89Ae1487c5",
   },
   // Minimal ABIs
   abis: {
@@ -36,6 +36,7 @@ window.PRIVASCORE_CONFIG = {
     ],
     agent: [
       "function mockMode() view returns (bool)",
+      "function scoreNow(address user)",
       "function fetchData(address user)",
       "function fetchData(address user, string sourceUrl, address executor)",
       "function analyzeScore(uint256 executionIndex, address user)",

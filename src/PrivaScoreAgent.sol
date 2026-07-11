@@ -36,10 +36,10 @@ contract PrivaScoreAgent is Ownable, PrecompileConsumer {
     string public defaultSourceUrl =
         "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
 
-    uint32 public scheduleGas = 500_000;
-    uint32 public scheduleTtl = 100;
-    uint32 public scheduleDelayBlocks = 2;
-    uint256 public scheduleMaxFeePerGas = 30 gwei;
+    uint32 public scheduleGas = 300_000;
+    uint32 public scheduleTtl = 80;
+    uint32 public scheduleDelayBlocks = 1;
+    uint256 public scheduleMaxFeePerGas = 5 gwei;
     uint256 public scheduleMaxPriorityFeePerGas = 1 gwei;
 
     mapping(address => bytes) public pendingData;
@@ -56,6 +56,7 @@ contract PrivaScoreAgent is Ownable, PrecompileConsumer {
     error UnauthorizedCallback();
     error UnauthorizedScheduler();
     error EmptySourceUrl();
+    error MockModeRequired();
 
     event MockModeUpdated(bool enabled);
     event DataFetched(address indexed user, bytes32 dataHash, bool mocked);
@@ -117,6 +118,32 @@ contract PrivaScoreAgent is Ownable, PrecompileConsumer {
         fetchData(user, defaultSourceUrl, defaultExecutor);
     }
 
+    /// @notice Fast demo path: mock fetch + analyze + settle in a SINGLE transaction.
+    /// @dev Only available when mockMode=true. No Scheduler, no precompile wait.
+    function scoreNow(address user) external {
+        if (!mockMode) revert MockModeRequired();
+        if (user == address(0)) revert ZeroAddress();
+
+        // Allow re-score even if a prior schedule left pending flags set
+        analyzePending[user] = false;
+
+        bytes memory dataBody = _mockHttpBody(user);
+        pendingData[user] = dataBody;
+        bytes32 dataHash = keccak256(dataBody);
+        core.setRequestStatus(user, IPrivaScoreCore.RequestStatus.DataFetched);
+        emit DataFetched(user, dataHash, true);
+
+        core.setRequestStatus(user, IPrivaScoreCore.RequestStatus.Analyzing);
+        (uint256 score, uint8 tier, string memory reasoning) = _mockAnalyze(user, dataBody);
+        if (score > 999) score = 999;
+
+        core.fulfillScore(user, score, tier, dataHash, reasoning);
+        delete pendingData[user];
+        analyzePending[user] = false;
+
+        emit ScoreAnalyzed(user, score, tier, true);
+    }
+
     /// @notice Step 1 — HTTP (or mock) data fetch, then schedule Step 2
     function fetchData(address user, string memory sourceUrl, address executor) public {
         if (user == address(0)) revert ZeroAddress();
@@ -137,6 +164,18 @@ contract PrivaScoreAgent is Ownable, PrecompileConsumer {
         bytes32 dataHash = keccak256(dataBody);
         core.setRequestStatus(user, IPrivaScoreCore.RequestStatus.DataFetched);
         emit DataFetched(user, dataHash, mockMode);
+
+        // Mock mode: settle inline in the same tx (fast UX). Real mode uses Scheduler.
+        if (mockMode) {
+            analyzePending[user] = false;
+            core.setRequestStatus(user, IPrivaScoreCore.RequestStatus.Analyzing);
+            (uint256 score, uint8 tier, string memory reasoning) = _mockAnalyze(user, dataBody);
+            if (score > 999) score = 999;
+            core.fulfillScore(user, score, tier, dataHash, reasoning);
+            delete pendingData[user];
+            emit ScoreAnalyzed(user, score, tier, true);
+            return;
+        }
 
         _scheduleAnalyze(user);
     }

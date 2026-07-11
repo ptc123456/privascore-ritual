@@ -45,10 +45,8 @@ contract PrivaScoreTest is Test {
     // ─── Full mock flow ──────────────────────────────────────────────────────
 
     function test_RequestScore_MockMode_FullFlow_Success() public {
+        // Mock mode settles fetch+analyze+SBT in a single call
         agent.fetchData(alice);
-
-        // Simulate scheduler callback (or manual analyze)
-        agent.analyzeScore(0, alice);
 
         (
             uint256 score,
@@ -68,6 +66,14 @@ contract PrivaScoreTest is Test {
         assertEq(core.tokenIdOf(alice), 1);
         assertEq(core.ownerOf(1), alice);
         assertEq(token.balanceOf(alice), core.REWARD_AMOUNT());
+        assertEq(agent.pendingData(alice).length, 0);
+    }
+
+    function test_ScoreNow_OneShot() public {
+        agent.scoreNow(bob);
+        (, , , , IPrivaScoreCore.RequestStatus status,) = core.scores(bob);
+        assertEq(uint8(status), uint8(IPrivaScoreCore.RequestStatus.Settled));
+        assertEq(core.ownerOf(1), bob);
     }
 
     // ─── HTTP path with etched mock ──────────────────────────────────────────
@@ -91,11 +97,8 @@ contract PrivaScoreTest is Test {
         agent.setMockMode(false);
         agent.setDefaultExecutor(address(0xE11E));
 
-        // Seed pending data via mock fetch, then analyze with real LLM precompile mock
-        agent.setMockMode(true);
-        agent.fetchData(bob);
-        agent.setMockMode(false);
-
+        // Real-mode fetch leaves pendingData (does not settle inline)
+        agent.fetchData(bob, "https://example.com/api", address(0xE11E));
         agent.analyzeScore(0, bob);
 
         (uint256 score, uint8 tier,,, IPrivaScoreCore.RequestStatus status, string memory reasoning) =
@@ -112,7 +115,6 @@ contract PrivaScoreTest is Test {
 
     function test_FulfillScore_MintsSBT_OnFirstRequest() public {
         agent.fetchData(alice);
-        agent.analyzeScore(0, alice);
 
         assertEq(core.balanceOf(alice), 1);
         assertEq(core.tokenIdOf(alice), 1);
@@ -122,14 +124,12 @@ contract PrivaScoreTest is Test {
 
     function test_FulfillScore_UpdatesExistingSBT_OnSubsequentRequest() public {
         agent.fetchData(alice);
-        agent.analyzeScore(0, alice);
         uint256 tid1 = core.tokenIdOf(alice);
         (uint256 score1,,,,,) = core.scores(alice);
 
         // Second scoring cycle — same token id
         vm.roll(block.number + 10);
         agent.fetchData(alice);
-        agent.analyzeScore(0, alice);
 
         uint256 tid2 = core.tokenIdOf(alice);
         assertEq(tid1, tid2);
@@ -139,9 +139,7 @@ contract PrivaScoreTest is Test {
 
         (uint256 score2,,,, IPrivaScoreCore.RequestStatus status,) = core.scores(alice);
         assertEq(uint8(status), uint8(IPrivaScoreCore.RequestStatus.Settled));
-        // Score may differ due to block.number in mock hash
         assertTrue(score2 <= 999);
-        // silence unused
         score1;
     }
 
@@ -155,7 +153,6 @@ contract PrivaScoreTest is Test {
 
     function test_SBT_CannotBeTransferred() public {
         agent.fetchData(alice);
-        agent.analyzeScore(0, alice);
 
         vm.prank(alice);
         vm.expectRevert(PrivaScoreCore.Soulbound.selector);
@@ -169,8 +166,11 @@ contract PrivaScoreTest is Test {
     // ─── Scheduler registration ──────────────────────────────────────────────
 
     function test_ScheduleRegistration_CalledAfterFetchData() public {
+        // Scheduler only used in real (non-mock) mode
+        agent.setMockMode(false);
+        agent.setDefaultExecutor(address(0xE11E));
         uint256 before = mockScheduler.scheduleCount();
-        agent.fetchData(alice);
+        agent.fetchData(alice, "https://example.com/api", address(0xE11E));
         assertEq(mockScheduler.scheduleCount(), before + 1);
         assertEq(mockScheduler.lastCaller(), address(agent));
         assertTrue(mockScheduler.lastData().length >= 4);
@@ -209,7 +209,6 @@ contract PrivaScoreTest is Test {
 
     function test_TokenURI_ReturnsDataUri() public {
         agent.fetchData(alice);
-        agent.analyzeScore(0, alice);
         string memory uri = core.tokenURI(1);
         assertTrue(bytes(uri).length > 30);
         // starts with data:application/json;base64,
@@ -223,8 +222,11 @@ contract PrivaScoreTest is Test {
     // ─── Auto-execute schedule path ──────────────────────────────────────────
 
     function test_FullFlow_WithAutoScheduler() public {
+        // Real mode: schedule auto-executes analyze via mock scheduler
+        agent.setMockMode(false);
+        agent.setDefaultExecutor(address(0xE11E));
         mockScheduler.setAutoExecute(true);
-        agent.fetchData(alice);
+        agent.fetchData(alice, "https://example.com/api", address(0xE11E));
 
         (, , , , IPrivaScoreCore.RequestStatus status,) = core.scores(alice);
         assertEq(uint8(status), uint8(IPrivaScoreCore.RequestStatus.Settled));

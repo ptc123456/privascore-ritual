@@ -108,7 +108,7 @@ cast send 0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948 `
 |----------|---------|
 | PrivaToken | [`0xd66a39bC33354EC20fC03673D3835eC5C50aE42d`](https://explorer.ritualfoundation.org/address/0xd66a39bC33354EC20fC03673D3835eC5C50aE42d) |
 | PrivaScoreCore | [`0xcD3bDa961f452D35420042f5c05685Cad9DfDa33`](https://explorer.ritualfoundation.org/address/0xcD3bDa961f452D35420042f5c05685Cad9DfDa33) |
-| PrivaScoreAgent | [`0x5F7b3D7BE2171B495C58fF548Ea3C91A3f9E5D85`](https://explorer.ritualfoundation.org/address/0x5F7b3D7BE2171B495C58fF548Ea3C91A3f9E5D85) |
+| PrivaScoreAgent | [`0x9f8A3Fd04bC40a593936B4dfD8798B89Ae1487c5`](https://explorer.ritualfoundation.org/address/0x9f8A3Fd04bC40a593936B4dfD8798B89Ae1487c5) |
 
 See `deployments/ritual-testnet.json`. Mock mode is **on** by default. Sample flow: `fetchData` registered a Scheduler job; analyze settled on-chain without a second user click.
 

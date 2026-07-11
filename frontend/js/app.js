@@ -456,6 +456,19 @@
     link.style.display = "inline";
   }
 
+  function sleep(ms) {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  /** Snappy pipeline animation while a single tx is in-flight */
+  async function animateFastPipeline(stopWhen) {
+    setPipeline("fetching");
+    await sleep(180);
+    if (stopWhen()) return;
+    setPipeline("analyzing");
+    await sleep(180);
+  }
+
   async function requestScore() {
     const user = ($("userAddress").value || "").trim();
     if (!ethers.isAddress(user)) {
@@ -472,79 +485,86 @@
     }
     try {
       await ensureRitualChain();
-      setPipeline("fetching");
       const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
       const fee = {
-        maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
-        maxFeePerGas: ethers.parseUnits("30", "gwei"),
+        maxPriorityFeePerGas: ethers.parseUnits("1.5", "gwei"),
+        maxFeePerGas: ethers.parseUnits("40", "gwei"),
+        gasLimit: 2_000_000n, // scoreNow does fetch+mint+reward in one tx
       };
 
-      let tx;
+      let isMock = true;
       try {
-        tx = await agent["fetchData(address)"](user, fee);
-      } catch (e1) {
+        isMock = await agent.mockMode();
+      } catch (_) {}
+
+      setPipeline("fetching");
+      toast(isMock ? "Scoring (fast mock)…" : "Submitting fetch…");
+
+      // Fast path: one tx does fetch+analyze+settle when mockMode is on
+      let tx;
+      let settledInOneTx = false;
+      if (isMock) {
         try {
-          tx = await agent.requestAndFetch(user, fee);
-        } catch (e2) {
-          setPipeline("fetch_error");
-          toast(friendlyError(e2));
-          log("request error: " + (e2.message || e2));
-          return;
+          tx = await agent.scoreNow(user, fee);
+          settledInOneTx = true;
+        } catch (_) {
+          // Fallback for older agents without scoreNow
+          tx = await agent["fetchData(address)"](user, fee);
+          settledInOneTx = true; // new fetchData also settles inline in mock mode
+        }
+      } else {
+        try {
+          tx = await agent["fetchData(address)"](user, fee);
+        } catch (e1) {
+          try {
+            tx = await agent.requestAndFetch(user, fee);
+          } catch (e2) {
+            setPipeline("fetch_error");
+            toast(friendlyError(e2));
+            log("request error: " + (e2.message || e2));
+            return;
+          }
         }
       }
 
       log("tx submitted " + tx.hash);
-      toast("Fetch tx submitted…");
       linkTx(tx.hash);
+
+      // Animate 1→2 while waiting for receipt (feels faster)
+      let done = false;
+      const anim = animateFastPipeline(() => done);
       const rc = await tx.wait();
+      done = true;
+      await anim;
+
       if (!txOk(rc)) {
         setPipeline("fetch_error");
-        toast("Fetch transaction reverted on-chain.");
-        log("fetch reverted " + tx.hash);
+        toast("Transaction reverted on-chain.");
+        log("tx reverted " + tx.hash);
         return;
       }
-      log("fetch confirmed block " + (rc?.blockNumber ?? "?"));
-      setPipeline("analyzing");
+      log("confirmed block " + (rc?.blockNumber ?? "?"));
 
-      // Mock mode: auto-analyze so demo doesn't depend on Scheduler latency
-      let autoSettled = false;
-      try {
-        const isMock = await agent.mockMode();
-        if (isMock) {
-          toast("Mock mode — auto Analyze…");
-          const tx2 = await agent.analyzeScoreManual(user, fee);
-          log("auto-analyze " + tx2.hash);
-          linkTx(tx2.hash);
-          const rc2 = await tx2.wait();
-          if (txOk(rc2)) {
-            autoSettled = true;
-            const s = await syncFromChain(user, { toastSettled: true });
-            if (s && s.status === 3) {
-              await loadOnChainStats();
-              return;
-            }
-            // Scheduler may have already cleared pendingData; re-sync
-            setPipeline("settled");
-            await syncFromChain(user, { toastSettled: true });
-            await loadOnChainStats();
-            return;
-          }
-        }
-      } catch (autoErr) {
-        // Scheduler may have already settled → NoPendingData is OK
-        log("auto-analyze skip: " + (autoErr.shortMessage || autoErr.message || autoErr));
-        const s = await syncFromChain(user).catch(() => null);
+      if (settledInOneTx || isMock) {
+        // Brief beat on step 3, then show score + reasoning immediately
+        setPipeline("settled");
+        await sleep(120);
+        const s = await syncFromChain(user, { toastSettled: true });
         if (s && s.status === 3) {
-          toast("Score settled on-chain");
           await loadOnChainStats();
           return;
         }
+        // rare race: wait a tick and re-read
+        await sleep(350);
+        await syncFromChain(user, { toastSettled: true });
+        await loadOnChainStats();
+        return;
       }
 
-      if (!autoSettled) {
-        toast("Data fetched — waiting for Scheduler… (or Analyze Manual)");
-        startPolling(user);
-      }
+      // Live precompile path: poll scheduler quickly
+      setPipeline("analyzing");
+      toast("Data fetched — waiting for Scheduler…");
+      startPolling(user);
     } catch (e) {
       if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
         setPipeline("idle");
@@ -586,7 +606,10 @@
         maxPriorityFeePerGas: ethers.parseUnits("1", "gwei"),
         maxFeePerGas: ethers.parseUnits("30", "gwei"),
       };
-      const tx = await agent.analyzeScoreManual(user, fee);
+      const tx = await agent.analyzeScoreManual(user, {
+        ...fee,
+        gasLimit: fee.gasLimit ?? 2_000_000n,
+      });
       log("analyze tx " + tx.hash);
       linkTx(tx.hash);
       const rc = await tx.wait();
@@ -639,13 +662,13 @@
           clearInterval(pollTimer);
         }
       } catch (_) {}
-      if (ticks > 45) {
+      if (ticks > 40) {
         clearInterval(pollTimer);
         setPipeline("analyzing");
         toast("Scheduler is slow — click Analyze Manual to settle.");
         log("poll timeout — use Analyze Manual");
       }
-    }, 2000);
+    }, 500); // snappy poll (~0.5s)
   }
 
   function saveAddresses() {

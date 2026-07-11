@@ -262,6 +262,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--border);
   background: rgba(7, 10, 18, 0.35);
   font-size: 0.9rem;
+  transition: border-color 120ms ease-out, background 120ms ease-out, transform 100ms ease-out;
 }
 .pipe-step .idx {
   width: 28px; height: 28px; border-radius: 8px;
@@ -273,6 +274,7 @@ a:hover { text-decoration: underline; }
 .pipe-step.active {
   border-color: rgba(96, 165, 250, 0.45);
   background: rgba(96, 165, 250, 0.08);
+  transform: scale(1.01);
 }
 .pipe-step.done {
   border-color: rgba(52, 211, 153, 0.35);
@@ -300,12 +302,14 @@ a:hover { text-decoration: underline; }
   border-radius: 14px;
   border: 1px dashed var(--border);
   min-height: 120px;
+  transition: opacity 150ms ease-out;
 }
 .result-score {
   font-size: 2.4rem;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1;
+  transition: transform 150ms ease-out;
 }
 .result-meta { color: var(--muted); font-size: 0.88rem; margin-top: 0.5rem; }
 .reasoning {
