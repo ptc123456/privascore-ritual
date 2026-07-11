@@ -212,6 +212,7 @@
       log("Connected " + account);
       toast("Wallet connected");
       if (!$("userAddress").value) $("userAddress").value = account;
+      await refreshMintPanel();
     } catch (e) {
       log("connect error: " + (e.message || e));
       toast(e.shortMessage || e.message || "Connect failed");
@@ -285,6 +286,181 @@
     if (!d || !t) return;
     d.className = "dot " + (ok ? "on" : "off");
     t.textContent = ok ? shortAddr(account) : "Not connected";
+    refreshMintPanel();
+  }
+
+  function setMintStatus(html, kind) {
+    const el = $("mintStatus");
+    if (!el) return;
+    el.className = "mint-status" + (kind ? " " + kind : "");
+    el.innerHTML = html || "";
+  }
+
+  /** Show connect gate vs mint button based on wallet state */
+  async function refreshMintPanel() {
+    const gate = $("mintGate");
+    const ready = $("mintReady");
+    const line = $("mintWalletLine");
+    if (!gate || !ready) return;
+
+    if (!account) {
+      gate.hidden = false;
+      ready.hidden = true;
+      setMintStatus("");
+      return;
+    }
+
+    gate.hidden = true;
+    ready.hidden = false;
+    if (line) line.textContent = "Minting for: " + account;
+
+    // If already has on-chain certificate, surface it
+    if (isConfigured() && publicProvider) {
+      try {
+        const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
+        const tid = await core.tokenIdOf(account);
+        const id = Number(tid);
+        if (id > 0) {
+          const explorer = `${cfg.explorerUrl}/token/${cfg.contracts.core}/instance/${id}`;
+          setMintStatus(
+            `You already own certificate <strong>#${id}</strong> · ` +
+              `<a href="${explorer}" target="_blank" rel="noopener">View on explorer ↗</a>`,
+            "ok"
+          );
+          const btn = $("btnMint");
+          if (btn) btn.textContent = "Certificate already minted";
+          if (btn) btn.disabled = true;
+          return;
+        }
+      } catch (_) {}
+    }
+
+    const btn = $("btnMint");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Mint free certificate";
+    }
+  }
+
+  /**
+   * Free SBT mint for the connected wallet (user pays gas only).
+   * Uses agent.scoreNow to settle score + mint soulbound credential in one tx.
+   */
+  async function mintCertificate() {
+    if (!isConfigured()) {
+      toast("Contracts not configured");
+      return;
+    }
+    if (!account || !signer) {
+      toast("Connect your wallet to mint");
+      await connectWallet();
+      if (!account || !signer) return;
+    }
+
+    const btn = $("btnMint");
+    if (btn) btn.disabled = true;
+    setMintStatus("Confirm the free mint in MetaMask… (gas only, no mint fee)", "");
+
+    try {
+      await ensureRitualChain();
+      // Re-bind signer after possible chain switch
+      if (browserProvider) signer = await browserProvider.getSigner();
+
+      const core = new ethers.Contract(cfg.contracts.core, cfg.abis.core, publicProvider);
+      const existing = Number(await core.tokenIdOf(account));
+      if (existing > 0) {
+        const explorer = `${cfg.explorerUrl}/token/${cfg.contracts.core}/instance/${existing}`;
+        setMintStatus(
+          `Already minted <strong>#${existing}</strong> · ` +
+            `<a href="${explorer}" target="_blank" rel="noopener">View ↗</a>`,
+          "ok"
+        );
+        toast("Certificate already minted");
+        if (btn) {
+          btn.textContent = "Certificate already minted";
+          btn.disabled = true;
+        }
+        return;
+      }
+
+      const agent = new ethers.Contract(cfg.contracts.agent, cfg.abis.agent, signer);
+      const fee = {
+        maxPriorityFeePerGas: ethers.parseUnits("1.5", "gwei"),
+        maxFeePerGas: ethers.parseUnits("40", "gwei"),
+        gasLimit: 2_000_000n,
+      };
+
+      setMintStatus("Submitting free mint transaction…", "");
+      let tx;
+      try {
+        tx = await agent.scoreNow(account, fee);
+      } catch (e1) {
+        // Fallback: fetchData also settles + mints in mock mode
+        tx = await agent["fetchData(address)"](account, fee);
+      }
+
+      log("mint tx " + tx.hash);
+      setMintStatus(
+        `Mint tx submitted · <a href="${cfg.explorerUrl}/tx/${tx.hash}" target="_blank" rel="noopener">${shortAddr(tx.hash)}</a>`,
+        ""
+      );
+      toast("Mint submitted — waiting for confirmation…");
+
+      const rc = await tx.wait();
+      if (!txOk(rc)) {
+        setMintStatus("Mint transaction reverted on-chain.", "err");
+        toast("Mint failed");
+        if (btn) btn.disabled = false;
+        return;
+      }
+
+      // Confirm token id
+      let tid = 0;
+      for (let i = 0; i < 6; i++) {
+        tid = Number(await core.tokenIdOf(account));
+        if (tid > 0) break;
+        await sleep(400);
+      }
+
+      if (tid > 0) {
+        const explorer = `${cfg.explorerUrl}/token/${cfg.contracts.core}/instance/${tid}`;
+        let scoreLine = "";
+        try {
+          const s = parseScores(await core.scores(account));
+          if (s.status === 3) {
+            scoreLine = ` · score <strong>${s.score}</strong> (${TIER_LABELS[s.tier] || s.tier})`;
+          }
+        } catch (_) {}
+        setMintStatus(
+          `Minted free certificate <strong>#${tid}</strong>${scoreLine} · ` +
+            `<a href="${explorer}" target="_blank" rel="noopener">View on explorer ↗</a>`,
+          "ok"
+        );
+        toast("Certificate NFT minted (free · gas only)");
+        if (btn) {
+          btn.textContent = "Certificate already minted";
+          btn.disabled = true;
+        }
+        await loadOnChainStats();
+      } else {
+        setMintStatus(
+          `Transaction confirmed, but certificate id not found yet. Check explorer: ` +
+            `<a href="${cfg.explorerUrl}/tx/${tx.hash}" target="_blank" rel="noopener">tx ↗</a>`,
+          "err"
+        );
+        if (btn) btn.disabled = false;
+      }
+    } catch (e) {
+      if (/user rejected|ACTION_REJECTED|denied/i.test(e?.message || e?.shortMessage || "")) {
+        setMintStatus("Mint cancelled in wallet.", "err");
+        toast("Transaction rejected in wallet.");
+      } else {
+        setMintStatus(friendlyError(e), "err");
+        toast(friendlyError(e));
+      }
+      log("mint error: " + (e.message || e));
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ─── Pipeline UI (step 3 NEVER shows the word "Failed") ───────────────────
@@ -554,7 +730,11 @@
     $("userAddress")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") checkScore();
     });
+    $("btnMintConnect")?.addEventListener("click", connectWallet);
+    $("btnMint")?.addEventListener("click", mintCertificate);
     $("btnSaveCfg")?.addEventListener("click", saveAddresses);
+
+    refreshMintPanel();
 
     if ($("cfgCore")) $("cfgCore").value = cfg.contracts.core;
     if ($("cfgAgent")) $("cfgAgent").value = cfg.contracts.agent;

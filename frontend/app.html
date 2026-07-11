@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PrivaScore App · Ritual</title>
-    <link rel="stylesheet" href="css/style.css?v=8" />
+    <link rel="stylesheet" href="css/style.css?v=9" />
     <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js" defer></script>
-    <script src="js/config.js?v=8" defer></script>
-    <script src="js/app.js?v=8" defer></script>
+    <script src="js/config.js?v=9" defer></script>
+    <script src="js/app.js?v=9" defer></script>
   </head>
   <body>
     <div class="container app-shell">
@@ -80,6 +80,29 @@
           <div class="result-box" id="resultBox">
             <p class="muted">Score and reasoning appear here after lookup.</p>
           </div>
+
+          <section class="mint-panel" id="mintPanel" aria-label="Mint certificate NFT">
+            <div class="mint-panel-head">
+              <h3>Mint certificate NFT</h3>
+              <span class="mint-badge">FREE · gas only</span>
+            </div>
+            <p class="muted mint-desc">
+              Mint a soulbound PrivaScore credential (non-transferable ERC-721) for your connected
+              wallet. There is <strong>no mint price</strong> — you only pay Ritual network gas.
+            </p>
+            <div id="mintGate" class="mint-gate">
+              <p class="muted">Connect your wallet to mint a free certificate NFT.</p>
+              <button type="button" class="btn btn-primary" id="btnMintConnect">Connect Wallet</button>
+            </div>
+            <div id="mintReady" class="mint-ready" hidden>
+              <p class="muted mono" id="mintWalletLine">Wallet: —</p>
+              <div class="row-actions">
+                <button type="button" class="btn btn-primary" id="btnMint">Mint free certificate</button>
+              </div>
+            </div>
+            <div id="mintStatus" class="mint-status muted" aria-live="polite"></div>
+          </section>
+
           <div class="log" id="txLog" aria-live="polite"></div>
         </section>
 

@@ -14,12 +14,34 @@ window.PRIVASCORE_CONFIG = {
     symbol: "RITUAL",
     decimals: 18,
   },
-  // Deployed on Ritual Testnet (chain 1979) — override via localStorage if needed
-  contracts: {
-    token: localStorage.getItem("ps_token") || "0xd66a39bC33354EC20fC03673D3835eC5C50aE42d",
-    core: localStorage.getItem("ps_core") || "0xcD3bDa961f452D35420042f5c05685Cad9DfDa33",
-    agent: localStorage.getItem("ps_agent") || "0x9f8A3Fd04bC40a593936B4dfD8798B89Ae1487c5",
-  },
+  // Deployed on Ritual Testnet (chain 1979)
+  // Prefer latest defaults; ignore stale localStorage agent if it is the retired v1 address
+  contracts: (function () {
+    const DEFAULTS = {
+      token: "0xd66a39bC33354EC20fC03673D3835eC5C50aE42d",
+      core: "0xcD3bDa961f452D35420042f5c05685Cad9DfDa33",
+      agent: "0x9f8A3Fd04bC40a593936B4dfD8798B89Ae1487c5",
+    };
+    const retired = new Set([
+      "0x5f7b3d7be2171b495c58ff548ea3c91a3f9e5d85",
+      "0x60c0346200030c57601f62003492388190039182",
+      "0xb897f62c12470e3cb4b2834777f5c8bb99b5c064",
+    ]);
+    const pick = (key, def) => {
+      const v = localStorage.getItem(key);
+      if (!v) return def;
+      if (retired.has(v.toLowerCase())) {
+        localStorage.setItem(key, def);
+        return def;
+      }
+      return v;
+    };
+    return {
+      token: pick("ps_token", DEFAULTS.token),
+      core: pick("ps_core", DEFAULTS.core),
+      agent: pick("ps_agent", DEFAULTS.agent),
+    };
+  })(),
   // Minimal ABIs
   abis: {
     core: [
@@ -31,6 +53,8 @@ window.PRIVASCORE_CONFIG = {
       "function requestScoreUpdate(address user)",
       "function agent() view returns (address)",
       "function ownerOf(uint256) view returns (address)",
+      "function tokenURI(uint256) view returns (string)",
+      "function balanceOf(address) view returns (uint256)",
       "event ScoreUpdated(address indexed user, uint256 score, uint8 riskTier, bytes32 dataHash, string reasoning)",
       "event ScoreRequested(address indexed user, address indexed requester)",
     ],

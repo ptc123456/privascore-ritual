@@ -304,6 +304,64 @@ a:hover { text-decoration: underline; }
   min-height: 120px;
   transition: opacity 150ms ease-out;
 }
+
+/* Mint certificate panel */
+.mint-panel {
+  margin-top: 1.15rem;
+  padding: 1.15rem 1.2rem;
+  border-radius: 14px;
+  border: 1px solid rgba(94, 234, 212, 0.22);
+  background: linear-gradient(
+    145deg,
+    rgba(94, 234, 212, 0.07),
+    rgba(96, 165, 250, 0.06)
+  );
+}
+.mint-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.mint-panel-head h3 {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.mint-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  color: var(--ok);
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+}
+.mint-desc {
+  font-size: 0.85rem;
+  margin-bottom: 0.9rem;
+}
+.mint-gate,
+.mint-ready {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.mint-gate[hidden],
+.mint-ready[hidden] {
+  display: none !important;
+}
+.mint-status {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  min-height: 1.2em;
+}
+.mint-status.ok { color: var(--ok); }
+.mint-status.err { color: var(--danger); }
+.mint-status a { color: var(--accent-2); }
 .result-score {
   font-size: 2.4rem;
   font-weight: 700;
