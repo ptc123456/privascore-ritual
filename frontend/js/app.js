@@ -45,6 +45,18 @@
     return c && c !== "0x0000000000000000000000000000000000000000";
   }
 
+  /** Hide vanity / placeholder addresses like 0x1111…, 0xaaaa…, 0x1010… */
+  function isPlausibleWallet(addr) {
+    if (!addr || typeof addr !== "string") return false;
+    const h = addr.replace(/^0x/i, "").toLowerCase();
+    if (h.length !== 40 || !/^[0-9a-f]{40}$/.test(h)) return false;
+    if (/^(.)\1{39}$/.test(h)) return false; // all same nibble
+    if (/^([0-9a-f]{2})\1{19}$/.test(h)) return false; // repeating byte pair (e.g. 1010…)
+    // Low entropy: <= 3 unique hex chars
+    if (new Set(h.split("")).size <= 3) return false;
+    return true;
+  }
+
   // ─── Public RPC (no wallet) ───────────────────────────────────────────────
   function initPublic() {
     publicProvider = new ethers.JsonRpcProvider(cfg.rpcUrl, cfg.chainId, {
@@ -91,10 +103,12 @@
     const limit = cfg.leaderboardLimit || 40;
     const liveRows = [];
     if (count > 0) {
-      // Newest first, up to limit
-      for (let i = count - 1; i >= Math.max(0, count - limit); i--) {
+      // Newest first, up to limit (scan a bit more to skip filtered vanity addresses)
+      const scan = Math.min(count, limit * 3);
+      for (let i = count - 1; i >= Math.max(0, count - scan); i--) {
         try {
           const user = await core.scoredUsers(i);
+          if (!isPlausibleWallet(user)) continue;
           const s = await core.scores(user);
           const status = Number(s.status ?? s[4]);
           if (status !== 3) continue; // only Settled
@@ -105,30 +119,34 @@
             reasoning: s.reasoning ?? s[5] ?? "",
             live: true,
           });
+          if (liveRows.length >= limit) break;
         } catch (_) {}
       }
     }
 
-    // Merge showcase wallets not already on-chain so the board always feels full
+    // Merge realistic showcase wallets not already on-chain
     const seen = new Set(liveRows.map((r) => r.address.toLowerCase()));
-    const fillers = (cfg.showcase || []).filter((r) => !seen.has(r.address.toLowerCase()));
+    const fillers = (cfg.showcase || []).filter(
+      (r) => isPlausibleWallet(r.address) && !seen.has(r.address.toLowerCase())
+    );
     const merged = liveRows.concat(fillers.map((r) => ({ ...r, live: false })));
 
-    // Sort by score desc for a proper leaderboard feel
     merged.sort((a, b) => Number(b.score) - Number(a.score));
 
     if (merged.length) {
       const label =
         liveRows.length > 0
-          ? `Live on-chain (${liveRows.length})` + (fillers.length ? ` + demo` : "")
-          : "Showcase (demo)";
+          ? `Live on-chain (${liveRows.length})` + (fillers.length ? ` + sample` : "")
+          : "Sample wallets";
       renderLeaderboard(merged, liveRows.length > 0, label, liveRows.length);
     }
   }
 
   function loadShowcase() {
-    const rows = [...(cfg.showcase || [])].sort((a, b) => Number(b.score) - Number(a.score));
-    renderLeaderboard(rows, false, "Showcase (demo)", 0);
+    const rows = [...(cfg.showcase || [])]
+      .filter((r) => isPlausibleWallet(r.address))
+      .sort((a, b) => Number(b.score) - Number(a.score));
+    renderLeaderboard(rows, false, "Sample wallets", 0);
   }
 
   function renderLeaderboard(rows, live, label, liveCount) {
